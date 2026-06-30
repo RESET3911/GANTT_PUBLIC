@@ -33,7 +33,8 @@ NEXT_PUBLIC_GCAL_CLIENT_ID=your-client-id-here.apps.googleusercontent.com
 Vercel に新規プロジェクトとしてインポートし、このリポジトリを指定するだけ。
 Firebase 設定は `lib/firebase.ts` にハードコード済みのためそのまま動作します。
 
-> 注意: 既存の GANTT（ST APPS 版）と同じ Firestore を共有しているため、
-> 片方で編集すると両方に反映されます。見る人ごとに分けたい場合は
-> `lib/firebase.ts` の Firebase プロジェクトか `lib/storage.ts` の
-> コレクション名 `gantt_tasks` を変更してください。
+> データは既存の GANTT（ST APPS 版）から独立しています。
+> 専用コレクション `gantt_public_tasks` / `gantt_public_daily_todos` /
+> `gantt_public_config` を使用するため、片方で編集してももう片方には影響しません。
+> （Firebase プロジェクト自体は `ringi-1b31a` を共用していますが、
+> コレクションが別なのでデータは完全に分離されています。）

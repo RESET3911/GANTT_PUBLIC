@@ -1,7 +1,7 @@
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from './firebase';
 
-const SETTINGS_DOC = doc(db, 'gantt_config', 'settings');
+const SETTINGS_DOC = doc(db, 'gantt_public_config', 'settings');
 
 export interface GanttSettings {
   assignees: string[];

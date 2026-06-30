@@ -9,7 +9,7 @@ import {
 } from 'firebase/firestore';
 import { Task } from '@/types/task';
 
-const COLLECTION = 'gantt_tasks';
+const COLLECTION = 'gantt_public_tasks';
 
 function stripUndefined<T extends object>(obj: T): Partial<T> {
   return Object.fromEntries(

@@ -9,7 +9,7 @@ export interface DailyTodo {
   createdAt: string;
 }
 
-const COLLECTION = 'gantt_daily_todos';
+const COLLECTION = 'gantt_public_daily_todos';
 
 export function subscribeDailyTodos(cb: (todos: DailyTodo[]) => void): () => void {
   return onSnapshot(

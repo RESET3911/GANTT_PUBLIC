@@ -1,0 +1,129 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --canvas:      #F2EDE3;
+    --surface:     #FFFFFF;
+    --surface-2:   #FAF8F3;
+    --header:      #FEFCF8;
+    --accent:      #C4621A;
+    --accent-dark: #A3501A;
+    --accent-soft: rgba(196,98,26,0.09);
+    --today:       #E05A1B;
+    --today-tint:  rgba(224,90,27,0.07);
+    --bd:          #DDD7CB;
+    --bd-light:    #EAE5DB;
+    --t1:          #1A1710;
+    --t2:          #6B6249;
+    --t3:          #ADA396;
+    --weekend:     #EDE7DC;
+    --font-mono:   'DM Mono', 'JetBrains Mono', monospace;
+  }
+
+  body {
+    font-family: 'DM Sans', system-ui, sans-serif;
+    background-color: var(--canvas);
+    color: var(--t1);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  input[type="date"] {
+    color-scheme: light;
+    font-family: var(--font-mono);
+  }
+
+  input, select, textarea {
+    color-scheme: light;
+  }
+
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--bd); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--t3); }
+}
+
+@layer components {
+  /* ── Pill buttons ── */
+  .pill-btn {
+    @apply px-3 py-1 text-xs font-semibold rounded-full transition-all duration-150 cursor-pointer;
+    letter-spacing: 0.01em;
+  }
+  .pill-btn-active {
+    background: var(--accent);
+    color: #FFFFFF;
+    box-shadow: 0 1px 6px rgba(196,98,26,0.4);
+  }
+  .pill-btn-inactive {
+    background: transparent;
+    color: var(--t2);
+    border: 1px solid var(--bd);
+  }
+  .pill-btn-inactive:hover {
+    color: var(--accent);
+    border-color: rgba(196,98,26,0.4);
+    background: var(--accent-soft);
+  }
+
+  /* ── Ctrl bar date input ── */
+  .ctrl-input {
+    @apply text-xs rounded-lg px-2.5 py-1.5 focus:outline-none transition-colors;
+    border: 1px solid var(--bd);
+    background: var(--surface);
+    color: var(--t1);
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  .ctrl-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(196,98,26,0.12);
+  }
+
+  /* ── Task row hover ── */
+  .row-hover:hover { background-color: rgba(196,98,26,0.04) !important; }
+
+  /* ── Gantt divider ── */
+  .gantt-divider {
+    height: 5px;
+    flex-shrink: 0;
+    cursor: row-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bd-light);
+    border-top: 1px solid var(--bd-light);
+    transition: background 0.15s;
+  }
+  .gantt-divider:hover  { background: rgba(196,98,26,0.12); }
+  .gantt-divider:active { background: rgba(196,98,26,0.22); }
+  .gantt-divider-handle {
+    width: 36px; height: 2px;
+    background: var(--bd);
+    border-radius: 1px;
+    transition: background 0.15s;
+  }
+  .gantt-divider:hover .gantt-divider-handle { background: var(--accent); opacity: 0.5; }
+
+  /* ── Modal dark form fields ── */
+  .modal-field {
+    width: 100%;
+    background: var(--surface-2);
+    border: 1px solid var(--bd);
+    color: var(--t1);
+    border-radius: 9px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-family: 'DM Sans', system-ui, sans-serif;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    box-sizing: border-box;
+  }
+  .modal-field:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(196,98,26,0.12);
+  }
+  .modal-field::placeholder { color: var(--t3); }
+}

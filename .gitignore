@@ -1,0 +1,4 @@
+node_modules/
+.next/
+data/tasks.db
+.env.local

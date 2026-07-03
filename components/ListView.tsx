@@ -8,10 +8,16 @@ import { STATUS_LABEL, STATUS_CHIP, STATUS_COLOR, isFinished } from '@/lib/statu
 type Props = {
   tasks: Task[];
   viewState: ViewState;
+  memberDepts?: Record<string, string>;
   onTaskClick: (task: Task) => void;
 };
 
 const COL_COUNT = 8;
+
+const DeptTag = ({ dept }: { dept?: string }) =>
+  dept ? (
+    <span style={{ fontSize: 9.5, fontWeight: 600, color: '#0D9488', background: '#F0FDFA', border: '1px solid #99F6E4', borderRadius: 4, padding: '0px 5px', whiteSpace: 'nowrap', marginLeft: 5 }}>{dept}</span>
+  ) : null;
 
 function daysRemaining(endDate: string): { label: string; color: string } {
   const d = differenceInDays(parseISO(endDate), startOfDay(new Date()));
@@ -21,7 +27,7 @@ function daysRemaining(endDate: string): { label: string; color: string } {
   return            { label: `残り${d}日`,  color: 'var(--t3)' };
 }
 
-function TaskRow({ task, onTaskClick }: { task: Task; onTaskClick: (t: Task) => void }) {
+function TaskRow({ task, memberDepts, onTaskClick }: { task: Task; memberDepts: Record<string, string>; onTaskClick: (t: Task) => void }) {
   const rem      = daysRemaining(task.endDate);
   const today    = startOfDay(new Date());
   const overdue  = isBefore(parseISO(task.endDate), today) && !isFinished(task.status);
@@ -47,10 +53,12 @@ function TaskRow({ task, onTaskClick }: { task: Task; onTaskClick: (t: Task) => 
         {task.notes && <span style={{ fontSize: 10.5, color: 'var(--t3)', display: 'block', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.notes}</span>}
       </td>
 
-      <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--t2)', whiteSpace: 'nowrap', fontWeight: 500 }}>{task.assignee || <span style={{ color: 'var(--t3)' }}>—</span>}</td>
-      <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--t2)', maxWidth: 180 }}>
+      <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--t2)', whiteSpace: 'nowrap', fontWeight: 500 }}>
+        {task.assignee ? <span style={{ display: 'inline-flex', alignItems: 'center' }}>{task.assignee}<DeptTag dept={memberDepts[task.assignee]} /></span> : <span style={{ color: 'var(--t3)' }}>—</span>}
+      </td>
+      <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--t2)', maxWidth: 220 }}>
         {task.members && task.members.length > 0
-          ? <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.members.join('、')}</span>
+          ? <span style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 8px', alignItems: 'center' }}>{task.members.map(m => <span key={m} style={{ display: 'inline-flex', alignItems: 'center' }}>{m}<DeptTag dept={memberDepts[m]} /></span>)}</span>
           : <span style={{ color: 'var(--t3)' }}>—</span>}
       </td>
       <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--t2)', whiteSpace: 'nowrap' }}>{task.category || <span style={{ color: 'var(--t3)' }}>—</span>}</td>
@@ -77,7 +85,7 @@ function SectionHeader({ label, count, accent }: { label: string; count: number;
   );
 }
 
-export default function ListView({ tasks, viewState, onTaskClick }: Props) {
+export default function ListView({ tasks, viewState, memberDepts = {}, onTaskClick }: Props) {
   // 進行中(上) → 未開始 → 相談段階(下)。完了はトグルONのときだけ最下部に。
   const byEnd = (a: Task, b: Task) => a.endDate.localeCompare(b.endDate);
   const inProgress = useMemo(() => tasks.filter(t => t.status === 'in_progress').sort(byEnd), [tasks]);
@@ -114,10 +122,10 @@ export default function ListView({ tasks, viewState, onTaskClick }: Props) {
           {totalVisible === 0 && (
             <tr><td colSpan={COL_COUNT} style={{ textAlign: 'center', padding: '64px 0', color: 'var(--t3)', fontSize: 13 }}>タスクがありません</td></tr>
           )}
-          {inProgress.length > 0 && (<><SectionHeader label="進行中" count={inProgress.length} accent={STATUS_COLOR.in_progress} />{inProgress.map(t => <TaskRow key={t.id} task={t} onTaskClick={onTaskClick} />)}</>)}
-          {todo.length > 0       && (<><SectionHeader label="未開始" count={todo.length}       accent={STATUS_COLOR.todo}        />{todo.map(t => <TaskRow key={t.id} task={t} onTaskClick={onTaskClick} />)}</>)}
-          {consulting.length > 0 && (<><SectionHeader label="相談段階" count={consulting.length} accent={STATUS_COLOR.consulting}  />{consulting.map(t => <TaskRow key={t.id} task={t} onTaskClick={onTaskClick} />)}</>)}
-          {viewState.showDone && done.length > 0 && (<><SectionHeader label="完了" count={done.length} accent="#16A34A" />{done.map(t => <TaskRow key={t.id} task={t} onTaskClick={onTaskClick} />)}</>)}
+          {inProgress.length > 0 && (<><SectionHeader label="進行中" count={inProgress.length} accent={STATUS_COLOR.in_progress} />{inProgress.map(t => <TaskRow key={t.id} task={t} memberDepts={memberDepts} onTaskClick={onTaskClick} />)}</>)}
+          {todo.length > 0       && (<><SectionHeader label="未開始" count={todo.length}       accent={STATUS_COLOR.todo}        />{todo.map(t => <TaskRow key={t.id} task={t} memberDepts={memberDepts} onTaskClick={onTaskClick} />)}</>)}
+          {consulting.length > 0 && (<><SectionHeader label="相談段階" count={consulting.length} accent={STATUS_COLOR.consulting}  />{consulting.map(t => <TaskRow key={t.id} task={t} memberDepts={memberDepts} onTaskClick={onTaskClick} />)}</>)}
+          {viewState.showDone && done.length > 0 && (<><SectionHeader label="完了" count={done.length} accent="#16A34A" />{done.map(t => <TaskRow key={t.id} task={t} memberDepts={memberDepts} onTaskClick={onTaskClick} />)}</>)}
         </tbody>
       </table>
     </div>

@@ -399,14 +399,14 @@ export default function Home() {
               <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
             </div>
           ) : mode === 'gantt' ? (
-            <GanttChart tasks={tasks} viewState={viewState}
+            <GanttChart tasks={tasks} viewState={viewState} memberDepts={ganttSettings.memberDepts}
               onTaskClick={task => setModal({ type: 'edit', task })}
               onDateClick={date => setModal({ type: 'new', date })}
               onTaskDragEnd={handleTaskDragEnd}
               onViewStateChange={setViewState}
               onGoToToday={() => setViewState(p => ({ ...p, viewStartDate: format(new Date(), 'yyyy-MM-dd') }))} />
           ) : (
-            <ListView tasks={tasks} viewState={viewState}
+            <ListView tasks={tasks} viewState={viewState} memberDepts={ganttSettings.memberDepts}
               onTaskClick={task => setModal({ type: 'edit', task })} />
           )}
         </div>
@@ -424,6 +424,7 @@ export default function Home() {
         <TaskModal
           task={modalTask} tasks={tasks}
           assignees={ganttSettings.assignees}
+          memberDepts={ganttSettings.memberDepts}
           initialDate={modalDate}
           gcalConnected={gcalConnected}
           onSave={modal.type === 'new' ? handleCreate : handleUpdate}

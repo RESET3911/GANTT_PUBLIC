@@ -28,7 +28,7 @@ type DisplayRow =
   | { type: 'group'; label: string; key: string }
   | { type: 'task'; task: Task };
 
-function buildDisplayRows(tasks: Task[], vs: ViewState): DisplayRow[] {
+function buildDisplayRows(tasks: Task[], vs: ViewState, memberDepts: Record<string, string>): DisplayRow[] {
   // 完了（終了）は既定で非表示。トグルONで表示。
   const visible = tasks.filter(t => vs.showDone || !isFinished(t.status));
 
@@ -47,10 +47,13 @@ function buildDisplayRows(tasks: Task[], vs: ViewState): DisplayRow[] {
     else if (vs.groupBy === 'member') peopleOf(t).forEach(m => push(m, t)); // メンバーごとにラインを複製
   });
 
+  // D/メンバーのグループは Dept を見出しに添える
+  const showDept = vs.groupBy === 'member' || vs.groupBy === 'assignee';
   const rows: DisplayRow[] = [];
-  Array.from(groups.keys()).sort((a, b) => a.localeCompare(b, 'ja')).forEach(label => {
-    rows.push({ type: 'group', label, key: label });
-    groups.get(label)!.slice().sort(compareByStatus).forEach(t => rows.push({ type: 'task', task: t }));
+  Array.from(groups.keys()).sort((a, b) => a.localeCompare(b, 'ja')).forEach(key => {
+    const dept = showDept ? memberDepts[key] : undefined;
+    rows.push({ type: 'group', label: dept ? `${key} · ${dept}` : key, key });
+    groups.get(key)!.slice().sort(compareByStatus).forEach(t => rows.push({ type: 'task', task: t }));
   });
   return rows;
 }
@@ -58,6 +61,7 @@ function buildDisplayRows(tasks: Task[], vs: ViewState): DisplayRow[] {
 type Props = {
   tasks: Task[];
   viewState: ViewState;
+  memberDepts?: Record<string, string>;
   onTaskClick: (task: Task) => void;
   onDateClick?: (date: string) => void;
   onTaskDragEnd?: (task: Task, newStart: string, newEnd: string) => void;
@@ -65,11 +69,13 @@ type Props = {
   onGoToToday?: () => void;
 };
 
-export default function GanttChart({ tasks, viewState, onTaskClick, onDateClick, onTaskDragEnd, onViewStateChange, onGoToToday }: Props) {
+export default function GanttChart({ tasks, viewState, memberDepts = {}, onTaskClick, onDateClick, onTaskDragEnd, onViewStateChange, onGoToToday }: Props) {
   const [panelVisible,   setPanelVisible]   = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
   const [dragPreview,    setDragPreview]    = useState<{ taskId: string; start: string; end: string } | null>(null);
   const [isDragging,     setIsDragging]     = useState(false);
   const [showFloatToday, setShowFloatToday] = useState(false);
+
+  const withDept = (n: string) => (memberDepts[n] ? `${n}（${memberDepts[n]}）` : n);
 
   const dragInfo   = useRef<DragInfo | null>(null);
   const didDrag    = useRef(false);
@@ -85,7 +91,7 @@ export default function GanttChart({ tasks, viewState, onTaskClick, onDateClick,
   const totalGanttWidth = totalDays * dayWidth;
   const leftW           = panelVisible ? LEFT_PANEL_WIDTH : 40;
 
-  const displayRows = useMemo(() => buildDisplayRows(tasks, viewState), [tasks, viewState]);
+  const displayRows = useMemo(() => buildDisplayRows(tasks, viewState, memberDepts), [tasks, viewState, memberDepts]);
   const { rowYs, totalHeight } = useMemo(() => {
     const ys: number[] = []; let y = 0;
     displayRows.forEach(row => { ys.push(y); y += row.type === 'group' ? GROUP_ROW_H : ROW_HEIGHT; });
@@ -256,7 +262,7 @@ export default function GanttChart({ tasks, viewState, onTaskClick, onDateClick,
                       {row.task.title}
                     </span>
                     <span style={{ fontSize: 11, color: 'var(--t3)', width: 84, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                      title={[row.task.assignee && `D: ${row.task.assignee}`, row.task.members?.length ? `メンバー: ${row.task.members.join(', ')}` : ''].filter(Boolean).join('\n')}>
+                      title={[row.task.assignee && `D: ${withDept(row.task.assignee)}`, row.task.members?.length ? `メンバー: ${row.task.members.map(withDept).join(', ')}` : ''].filter(Boolean).join('\n')}>
                       {row.task.assignee || '—'}
                       {row.task.members && row.task.members.length > 0 && (
                         <span style={{ marginLeft: 4, color: 'var(--accent)', fontWeight: 600 }}>+{row.task.members.length}</span>

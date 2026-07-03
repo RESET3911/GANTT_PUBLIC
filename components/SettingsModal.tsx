@@ -15,20 +15,39 @@ const LBL = 'block text-[10.5px] font-bold text-[var(--t3)] mb-2 uppercase track
 
 export default function SettingsModal({ settings, gcalConnected, calendars = [], onClose }: Props) {
   const [assignees,       setAssignees]       = useState<string[]>(settings.assignees);
+  const [memberDepts,     setMemberDepts]     = useState<Record<string, string>>(settings.memberDepts ?? {});
   const [gcalCalendarId,  setGcalCalendarId]  = useState(settings.gcalCalendarId ?? 'primary');
   const [newName,         setNewName]         = useState('');
+  const [newDept,         setNewDept]         = useState('');
   const [saving,          setSaving]          = useState(false);
+
+  // 既存のDept候補（datalist用）
+  const deptOptions = Array.from(new Set(Object.values(memberDepts).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ja'));
 
   const handleAdd = () => {
     const n = newName.trim();
     if (!n || assignees.includes(n)) return;
     setAssignees(p => [...p, n]);
-    setNewName('');
+    if (newDept.trim()) setMemberDepts(p => ({ ...p, [n]: newDept.trim() }));
+    setNewName(''); setNewDept('');
+  };
+
+  const handleRemove = (name: string) => {
+    setAssignees(p => p.filter(a => a !== name));
+    setMemberDepts(p => { const next = { ...p }; delete next[name]; return next; });
+  };
+
+  const setDept = (name: string, dept: string) => {
+    setMemberDepts(p => {
+      const next = { ...p };
+      if (dept.trim()) next[name] = dept.trim(); else delete next[name];
+      return next;
+    });
   };
 
   const handleSave = async () => {
     setSaving(true);
-    await saveGanttSettings({ ...settings, assignees, gcalCalendarId });
+    await saveGanttSettings({ ...settings, assignees, memberDepts, gcalCalendarId });
     setSaving(false);
     onClose();
   };
@@ -44,7 +63,7 @@ export default function SettingsModal({ settings, gcalConnected, calendars = [],
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(26,23,16,0.45)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ background: 'var(--surface)', borderRadius: 18, width: '100%', maxWidth: 380, boxShadow: '0 24px 60px rgba(0,0,0,0.16)', border: '1px solid var(--bd)', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 18, width: '100%', maxWidth: 420, boxShadow: '0 24px 60px rgba(0,0,0,0.16)', border: '1px solid var(--bd)', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px 14px', borderBottom: '1px solid var(--bd)' }}>
@@ -57,23 +76,35 @@ export default function SettingsModal({ settings, gcalConnected, calendars = [],
 
         {/* Body */}
         <div style={{ padding: '18px 22px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 18 }}>
+          <datalist id="dept-options">
+            {deptOptions.map(d => <option key={d} value={d} />)}
+          </datalist>
+
           <div>
             <label className={LBL}>メンバー（D・担当者リスト）</label>
-            <div style={{ maxHeight: 180, overflowY: 'auto', marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ maxHeight: 220, overflowY: 'auto', marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 5 }}>
               {assignees.length === 0 && <p style={{ fontSize: 12, color: 'var(--t3)', padding: '6px 0' }}>メンバーが登録されていません</p>}
               {assignees.map(name => (
-                <div key={name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--surface-2)', border: '1px solid var(--bd)', borderRadius: 8, padding: '7px 12px' }}>
-                  <span style={{ fontSize: 13, color: 'var(--t1)' }}>{name}</span>
-                  <button type="button" onClick={() => setAssignees(p => p.filter(a => a !== name))} style={{ color: 'var(--t3)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, lineHeight: 1, transition: 'color .15s' }}
+                <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--surface-2)', border: '1px solid var(--bd)', borderRadius: 8, padding: '6px 8px 6px 12px' }}>
+                  <span style={{ fontSize: 13, color: 'var(--t1)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+                  <input
+                    type="text" list="dept-options" value={memberDepts[name] ?? ''}
+                    onChange={e => setDept(name, e.target.value)} placeholder="Dept（所属）"
+                    style={{ ...field, width: 130, fontSize: 11.5, padding: '5px 9px', background: '#fff' }} onFocus={onFoc} onBlur={onBlr}
+                  />
+                  <button type="button" onClick={() => handleRemove(name)} style={{ color: 'var(--t3)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '0 2px', transition: 'color .15s' }}
                     onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')} onMouseLeave={e => (e.currentTarget.style.color = 'var(--t3)')}>✕</button>
                 </div>
               ))}
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input type="text" value={newName} onChange={e => setNewName(e.target.value)} placeholder="名前を入力" style={{ ...field, flex: 1 }} onFocus={onFoc} onBlur={onBlr}
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input type="text" value={newName} onChange={e => setNewName(e.target.value)} placeholder="名前" style={{ ...field, flex: 1, minWidth: 0 }} onFocus={onFoc} onBlur={onBlr}
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(); } }} />
-              <button type="button" onClick={handleAdd} disabled={!newName.trim()} style={{ padding: '8px 14px', fontSize: 12, fontWeight: 600, background: newName.trim() ? 'var(--accent)' : 'var(--bd)', color: newName.trim() ? '#fff' : 'var(--t3)', border: 'none', borderRadius: 9, cursor: newName.trim() ? 'pointer' : 'not-allowed', transition: 'all .15s', boxShadow: newName.trim() ? '0 2px 8px rgba(196,98,26,0.3)' : 'none' }}>追加</button>
+              <input type="text" list="dept-options" value={newDept} onChange={e => setNewDept(e.target.value)} placeholder="Dept（任意）" style={{ ...field, width: 120, fontSize: 12 }} onFocus={onFoc} onBlur={onBlr}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(); } }} />
+              <button type="button" onClick={handleAdd} disabled={!newName.trim()} style={{ padding: '8px 14px', fontSize: 12, fontWeight: 600, background: newName.trim() ? 'var(--accent)' : 'var(--bd)', color: newName.trim() ? '#fff' : 'var(--t3)', border: 'none', borderRadius: 9, cursor: newName.trim() ? 'pointer' : 'not-allowed', transition: 'all .15s', boxShadow: newName.trim() ? '0 2px 8px rgba(196,98,26,0.3)' : 'none', whiteSpace: 'nowrap', flexShrink: 0 }}>追加</button>
             </div>
+            <p style={{ fontSize: 10.5, color: 'var(--t3)', marginTop: 6 }}>ここで登録したメンバーを、各プロジェクトのD・メンバー欄でプルダウン選択できます</p>
           </div>
 
           {gcalConnected && (

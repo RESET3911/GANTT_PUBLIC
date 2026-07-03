@@ -12,12 +12,19 @@ type Props = {
   task: Task | null;
   tasks: Task[];
   assignees?: string[];
+  memberDepts?: Record<string, string>;
   initialDate?: string;
   gcalConnected?: boolean;
   onSave: (data: SaveData | Task, syncToGCal: boolean) => void;
   onDelete?: () => void;
   onClose: () => void;
 };
+
+// 名前の横に付ける Dept タグ
+const DeptTag = ({ dept }: { dept?: string }) =>
+  dept ? (
+    <span style={{ fontSize: 10, fontWeight: 600, color: '#0D9488', background: '#F0FDFA', border: '1px solid #99F6E4', borderRadius: 5, padding: '1px 6px', whiteSpace: 'nowrap' }}>{dept}</span>
+  ) : null;
 
 // 進行中(上) → 未開始 → 相談段階 → 完了
 const STATUS_OPTIONS: { value: TaskStatus; label: string; bg: string; fg: string; border: string }[] =
@@ -29,7 +36,8 @@ const STATUS_OPTIONS: { value: TaskStatus; label: string; bg: string; fg: string
 
 const LBL = 'block text-[10.5px] font-bold text-[var(--t3)] mb-1.5 uppercase tracking-[0.07em]';
 
-export default function TaskModal({ task, tasks, assignees = [], initialDate, gcalConnected, onSave, onDelete, onClose }: Props) {
+export default function TaskModal({ task, tasks, assignees = [], memberDepts = {}, initialDate, gcalConnected, onSave, onDelete, onClose }: Props) {
+  const deptLabel = (name: string) => memberDepts[name] ? `${name}（${memberDepts[name]}）` : name;
   const isEdit     = task !== null;
   const defDate    = initialDate ?? format(new Date(), 'yyyy-MM-dd');
   const defEndDate = initialDate ?? format(addDays(new Date(), 14), 'yyyy-MM-dd');
@@ -40,7 +48,6 @@ export default function TaskModal({ task, tasks, assignees = [], initialDate, gc
   const [status,       setStatus]       = useState<TaskStatus>(task?.status === 'closed' ? 'done' : (task?.status ?? 'todo'));
   const [assignee,     setAssignee]     = useState(task?.assignee    ?? '');
   const [members,      setMembers]      = useState<string[]>(task?.members ?? []);
-  const [newMember,    setNewMember]    = useState('');
   const [category,     setCategory]     = useState(task?.category    ?? '');
   const [parentId,     setParentId]     = useState(task?.parentId    ?? '');
   const [milestone,    setMilestone]    = useState(task?.milestoneFlag ?? false);
@@ -78,7 +85,6 @@ export default function TaskModal({ task, tasks, assignees = [], initialDate, gc
     const n = name.trim();
     if (!n || members.includes(n)) return;
     setMembers(p => [...p, n]);
-    setNewMember('');
   };
   const removeMember = (name: string) => setMembers(p => p.filter(m => m !== name));
   // 設定のメンバーリストから、D本人と既に追加済みを除いた候補
@@ -159,10 +165,11 @@ export default function TaskModal({ task, tasks, assignees = [], initialDate, gc
               {assignees.length > 0 ? (
                 <select value={assignee} onChange={e => setAssignee(e.target.value)} style={{ ...field, fontSize: 12 }} onFocus={onFocus} onBlur={onBlur}>
                   <option value="">未設定</option>
-                  {assignees.map(a => <option key={a} value={a}>{a}</option>)}
+                  {assignee && !assignees.includes(assignee) && <option value={assignee}>{deptLabel(assignee)}</option>}
+                  {assignees.map(a => <option key={a} value={a}>{deptLabel(a)}</option>)}
                 </select>
               ) : (
-                <input type="text" value={assignee} onChange={e => setAssignee(e.target.value)} placeholder="例: さく" style={{ ...field, fontSize: 12 }} onFocus={onFocus} onBlur={onBlur} />
+                <input type="text" value={assignee} onChange={e => setAssignee(e.target.value)} placeholder="設定でメンバー登録を推奨" style={{ ...field, fontSize: 12 }} onFocus={onFocus} onBlur={onBlur} />
               )}
             </div>
             <div>
@@ -177,29 +184,26 @@ export default function TaskModal({ task, tasks, assignees = [], initialDate, gc
             {members.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
                 {members.map(m => (
-                  <span key={m} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 500, color: 'var(--t1)', background: 'var(--surface-2)', border: '1px solid var(--bd)', borderRadius: 20, padding: '4px 6px 4px 11px' }}>
+                  <span key={m} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 500, color: 'var(--t1)', background: 'var(--surface-2)', border: '1px solid var(--bd)', borderRadius: 20, padding: '4px 7px 4px 11px' }}>
                     {m}
+                    <DeptTag dept={memberDepts[m]} />
                     <button type="button" onClick={() => removeMember(m)} style={{ color: 'var(--t3)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: 0 }}>✕</button>
                   </span>
                 ))}
               </div>
             )}
             {assignees.length > 0 ? (
-              <div style={{ display: 'flex', gap: 6 }}>
-                <select value="" onChange={e => { if (e.target.value) addMember(e.target.value); }} style={{ ...field, flex: 1, fontSize: 12 }} onFocus={onFocus} onBlur={onBlur}>
+              <>
+                <select value="" onChange={e => { if (e.target.value) addMember(e.target.value); }} style={{ ...field, width: '100%', fontSize: 12 }} onFocus={onFocus} onBlur={onBlur}>
                   <option value="">＋ メンバーを追加...</option>
-                  {memberSuggestions.map(a => <option key={a} value={a}>{a}</option>)}
+                  {memberSuggestions.map(a => <option key={a} value={a}>{deptLabel(a)}</option>)}
                 </select>
-              </div>
+                {memberSuggestions.length === 0 && (
+                  <p style={{ fontSize: 10.5, color: 'var(--t3)', marginTop: 5 }}>追加できるメンバーがいません（設定で登録してください）</p>
+                )}
+              </>
             ) : (
-              <div style={{ display: 'flex', gap: 6 }}>
-                <input type="text" value={newMember} onChange={e => setNewMember(e.target.value)} placeholder="名前を入力" style={{ ...field, flex: 1, fontSize: 12 }} onFocus={onFocus} onBlur={onBlur}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addMember(newMember); } }} />
-                <button type="button" disabled={!newMember.trim()} onClick={() => addMember(newMember)} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, background: newMember.trim() ? 'var(--accent-soft)' : '#F4F4F5', color: newMember.trim() ? 'var(--accent)' : 'var(--t3)', border: '1px solid var(--bd)', borderRadius: 9, cursor: newMember.trim() ? 'pointer' : 'not-allowed', whiteSpace: 'nowrap', flexShrink: 0 }}>＋追加</button>
-              </div>
-            )}
-            {assignees.length > 0 && memberSuggestions.length === 0 && members.length === 0 && (
-              <p style={{ fontSize: 10.5, color: 'var(--t3)', marginTop: 5 }}>設定でメンバーを登録すると選べます</p>
+              <p style={{ fontSize: 11, color: 'var(--t3)' }}>設定でメンバーを登録すると、ここでプルダウン選択できます</p>
             )}
           </div>
 

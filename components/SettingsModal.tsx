@@ -58,9 +58,9 @@ export default function SettingsModal({ settings, gcalConnected, calendars = [],
         {/* Body */}
         <div style={{ padding: '18px 22px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 18 }}>
           <div>
-            <label className={LBL}>担当者リスト</label>
+            <label className={LBL}>メンバー（D・担当者リスト）</label>
             <div style={{ maxHeight: 180, overflowY: 'auto', marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {assignees.length === 0 && <p style={{ fontSize: 12, color: 'var(--t3)', padding: '6px 0' }}>担当者が登録されていません</p>}
+              {assignees.length === 0 && <p style={{ fontSize: 12, color: 'var(--t3)', padding: '6px 0' }}>メンバーが登録されていません</p>}
               {assignees.map(name => (
                 <div key={name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--surface-2)', border: '1px solid var(--bd)', borderRadius: 8, padding: '7px 12px' }}>
                   <span style={{ fontSize: 13, color: 'var(--t1)' }}>{name}</span>

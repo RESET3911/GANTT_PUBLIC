@@ -1,7 +1,7 @@
 'use client';
 
 import { format, parseISO } from 'date-fns';
-import { ViewState, GroupBy, FilterStatus } from '@/types/task';
+import { ViewState, GroupBy } from '@/types/task';
 
 type Props = {
   viewState: ViewState;
@@ -19,18 +19,10 @@ const VIEW_RANGES: { value: ViewState['viewRange']; label: string }[] = [
 
 const GROUP_OPTIONS: { value: GroupBy; label: string }[] = [
   { value: 'none',     label: 'なし' },
-  { value: 'assignee', label: '担当者' },
+  { value: 'assignee', label: 'D' },
+  { value: 'member',   label: 'メンバー' },
   { value: 'category', label: 'カテゴリー' },
   { value: 'parent',   label: '親課題' },
-];
-
-const FILTER_OPTIONS: { value: FilterStatus; label: string }[] = [
-  { value: 'all',        label: 'すべて' },
-  { value: 'todo',       label: '未対応' },
-  { value: 'in_progress',label: '処理中' },
-  { value: 'done',       label: '処理済み' },
-  { value: 'closed',     label: '完了' },
-  { value: 'not_closed', label: '完了以外' },
 ];
 
 const Sep = () => <div style={{ width: 1, height: 14, background: 'var(--bd)', flexShrink: 0 }} />;
@@ -99,17 +91,16 @@ export default function ControlBar({ viewState, onViewStateChange, onToday, onNa
 
         <Sep />
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <span style={label}>状態</span>
-          <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-            {FILTER_OPTIONS.map(o => (
-              <button key={o.value} onClick={() => update({ filterStatus: o.value })}
-                className={`pill-btn ${viewState.filterStatus === o.value ? 'pill-btn-active' : 'pill-btn-inactive'}`}>
-                {o.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* 完了（終了）プロジェクトの表示トグル */}
+        <button
+          onClick={() => update({ showDone: !viewState.showDone })}
+          className={`pill-btn ${viewState.showDone ? 'pill-btn-active' : 'pill-btn-inactive'}`}
+          title="完了したプロジェクトの表示/非表示"
+          style={{ display: 'flex', alignItems: 'center', gap: 5 }}
+        >
+          <span style={{ fontSize: 11 }}>{viewState.showDone ? '☑' : '☐'}</span>
+          完了を表示
+        </button>
       </div>
     </div>
   );

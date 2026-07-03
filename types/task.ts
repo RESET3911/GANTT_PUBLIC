@@ -1,4 +1,5 @@
-export type TaskStatus = 'todo' | 'in_progress' | 'done' | 'closed';
+// consulting=相談段階, todo=未開始, in_progress=進行中, done/closed=完了(終了)
+export type TaskStatus = 'consulting' | 'todo' | 'in_progress' | 'done' | 'closed';
 
 export interface Checkpoint {
   id: string;
@@ -10,7 +11,8 @@ export interface Checkpoint {
 export interface Task {
   id: string;
   title: string;
-  assignee: string;
+  assignee: string;       // 主担当（D）
+  members?: string[];     // プロジェクトメンバー（Dを除く追加メンバー）
   startDate: string;
   endDate: string;
   status: TaskStatus;
@@ -25,12 +27,11 @@ export interface Task {
   updatedAt: string;
 }
 
-export type GroupBy = 'none' | 'assignee' | 'category' | 'parent';
-export type FilterStatus = TaskStatus | 'all' | 'not_closed';
+export type GroupBy = 'none' | 'assignee' | 'member' | 'category' | 'parent';
 
 export interface ViewState {
   viewStartDate: string;
   viewRange: 1 | 2 | 3 | 6;
   groupBy: GroupBy;
-  filterStatus: FilterStatus;
+  showDone: boolean;   // 完了（終了）を表示するか
 }

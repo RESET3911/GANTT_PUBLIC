@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { format, addDays } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 import { Task, TaskStatus, Checkpoint } from '@/types/task';
+import { STATUS_CHIP } from '@/lib/status';
 
 export type SaveData = Omit<Task, 'id' | 'createdAt' | 'updatedAt'>;
 
@@ -18,12 +19,13 @@ type Props = {
   onClose: () => void;
 };
 
-const STATUS_OPTIONS: { value: TaskStatus; label: string; bg: string; fg: string; border: string }[] = [
-  { value: 'todo',        label: '未対応',   bg: '#F4F4F5', fg: '#71717A', border: '#E4E4E7' },
-  { value: 'in_progress', label: '処理中',   bg: '#EEF2FF', fg: '#4F46E5', border: '#C7D2FE' },
-  { value: 'done',        label: '処理済み', bg: '#F0FDF4', fg: '#16A34A', border: '#BBF7D0' },
-  { value: 'closed',      label: '完了',     bg: '#F4F4F5', fg: '#A1A1AA', border: '#E4E4E7' },
-];
+// 進行中(上) → 未開始 → 相談段階 → 完了
+const STATUS_OPTIONS: { value: TaskStatus; label: string; bg: string; fg: string; border: string }[] =
+  (['in_progress', 'todo', 'consulting', 'done'] as TaskStatus[]).map(v => ({
+    value: v,
+    label: { in_progress: '進行中', todo: '未開始', consulting: '相談段階', done: '完了' }[v as 'in_progress' | 'todo' | 'consulting' | 'done'],
+    ...STATUS_CHIP[v],
+  }));
 
 const LBL = 'block text-[10.5px] font-bold text-[var(--t3)] mb-1.5 uppercase tracking-[0.07em]';
 
@@ -35,8 +37,10 @@ export default function TaskModal({ task, tasks, assignees = [], initialDate, gc
   const [title,        setTitle]        = useState(task?.title       ?? '');
   const [startDate,    setStartDate]    = useState(task?.startDate   ?? defDate);
   const [endDate,      setEndDate]      = useState(task?.endDate     ?? defEndDate);
-  const [status,       setStatus]       = useState<TaskStatus>(task?.status ?? 'todo');
+  const [status,       setStatus]       = useState<TaskStatus>(task?.status === 'closed' ? 'done' : (task?.status ?? 'todo'));
   const [assignee,     setAssignee]     = useState(task?.assignee    ?? '');
+  const [members,      setMembers]      = useState<string[]>(task?.members ?? []);
+  const [newMember,    setNewMember]    = useState('');
   const [category,     setCategory]     = useState(task?.category    ?? '');
   const [parentId,     setParentId]     = useState(task?.parentId    ?? '');
   const [milestone,    setMilestone]    = useState(task?.milestoneFlag ?? false);
@@ -53,6 +57,7 @@ export default function TaskModal({ task, tasks, assignees = [], initialDate, gc
     const data: SaveData = {
       title: title.trim(), startDate, endDate, status,
       assignee: assignee.trim(),
+      members: members.length > 0 ? members : undefined,
       category: category.trim() || undefined,
       parentId: parentId || undefined,
       milestoneFlag: milestone,
@@ -68,6 +73,16 @@ export default function TaskModal({ task, tasks, assignees = [], initialDate, gc
     setCheckpoints(p => [...p, { id: uuidv4(), date: newCpDate, label: newCpLabel.trim() || undefined }]);
     setNewCpDate(''); setNewCpLabel('');
   };
+
+  const addMember = (name: string) => {
+    const n = name.trim();
+    if (!n || members.includes(n)) return;
+    setMembers(p => [...p, n]);
+    setNewMember('');
+  };
+  const removeMember = (name: string) => setMembers(p => p.filter(m => m !== name));
+  // 設定のメンバーリストから、D本人と既に追加済みを除いた候補
+  const memberSuggestions = assignees.filter(a => a !== assignee && !members.includes(a));
 
   const parentTasks = tasks.filter(t => t.id !== task?.id);
 
@@ -140,7 +155,7 @@ export default function TaskModal({ task, tasks, assignees = [], initialDate, gc
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
-              <label className={LBL}>担当者</label>
+              <label className={LBL}>D（主担当）</label>
               {assignees.length > 0 ? (
                 <select value={assignee} onChange={e => setAssignee(e.target.value)} style={{ ...field, fontSize: 12 }} onFocus={onFocus} onBlur={onBlur}>
                   <option value="">未設定</option>
@@ -154,6 +169,38 @@ export default function TaskModal({ task, tasks, assignees = [], initialDate, gc
               <label className={LBL}>カテゴリー</label>
               <input type="text" value={category} onChange={e => setCategory(e.target.value)} placeholder="例: 開発" style={{ ...field, fontSize: 12 }} onFocus={onFocus} onBlur={onBlur} />
             </div>
+          </div>
+
+          {/* プロジェクトメンバー */}
+          <div>
+            <label className={LBL}>プロジェクトメンバー</label>
+            {members.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                {members.map(m => (
+                  <span key={m} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 500, color: 'var(--t1)', background: 'var(--surface-2)', border: '1px solid var(--bd)', borderRadius: 20, padding: '4px 6px 4px 11px' }}>
+                    {m}
+                    <button type="button" onClick={() => removeMember(m)} style={{ color: 'var(--t3)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: 0 }}>✕</button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {assignees.length > 0 ? (
+              <div style={{ display: 'flex', gap: 6 }}>
+                <select value="" onChange={e => { if (e.target.value) addMember(e.target.value); }} style={{ ...field, flex: 1, fontSize: 12 }} onFocus={onFocus} onBlur={onBlur}>
+                  <option value="">＋ メンバーを追加...</option>
+                  {memberSuggestions.map(a => <option key={a} value={a}>{a}</option>)}
+                </select>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input type="text" value={newMember} onChange={e => setNewMember(e.target.value)} placeholder="名前を入力" style={{ ...field, flex: 1, fontSize: 12 }} onFocus={onFocus} onBlur={onBlur}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addMember(newMember); } }} />
+                <button type="button" disabled={!newMember.trim()} onClick={() => addMember(newMember)} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, background: newMember.trim() ? 'var(--accent-soft)' : '#F4F4F5', color: newMember.trim() ? 'var(--accent)' : 'var(--t3)', border: '1px solid var(--bd)', borderRadius: 9, cursor: newMember.trim() ? 'pointer' : 'not-allowed', whiteSpace: 'nowrap', flexShrink: 0 }}>＋追加</button>
+              </div>
+            )}
+            {assignees.length > 0 && memberSuggestions.length === 0 && members.length === 0 && (
+              <p style={{ fontSize: 10.5, color: 'var(--t3)', marginTop: 5 }}>設定でメンバーを登録すると選べます</p>
+            )}
           </div>
 
           <div>

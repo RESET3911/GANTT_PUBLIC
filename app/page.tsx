@@ -7,6 +7,7 @@ import { Task, ViewState } from '@/types/task';
 import { subscribeTasks, saveTask, updateTaskFields, deleteTask } from '@/lib/storage';
 import { connectGCal, disconnectGCal, wasGCalConnected, createGCalEvent, updateGCalEvent, deleteGCalEvent, listCalendars, listEvents, GCalCalendar } from '@/lib/gcal';
 import { subscribeGanttSettings, GanttSettings } from '@/lib/ganttSettings';
+import { isFinished } from '@/lib/status';
 import { subscribeDailyTodos, DailyTodo } from '@/lib/dailyTodo';
 import { SaveData } from '@/components/TaskModal';
 import DailyTodoPanel from '@/components/DailyTodoPanel';
@@ -22,7 +23,7 @@ const DEFAULT_VIEW_STATE: ViewState = {
   viewStartDate: format(new Date(), 'yyyy-MM-dd'),
   viewRange: 3,
   groupBy: 'none',
-  filterStatus: 'all',
+  showDone: false,
 };
 
 type ModalState =
@@ -216,19 +217,13 @@ export default function Home() {
   const modalDate = modal?.type === 'new'  ? modal.date : undefined;
 
   /* ── SummaryBar data ── */
-  const summaryTasks = tasks.filter(t => {
-    if (viewState.filterStatus === 'all')        return true;
-    if (viewState.filterStatus === 'not_closed') return t.status !== 'closed';
-    return t.status === viewState.filterStatus;
-  });
   const today = startOfDay(new Date());
-  const sInProgress = summaryTasks.filter(t => t.status === 'in_progress').length;
-  const sTodo       = summaryTasks.filter(t => t.status === 'todo').length;
-  const sDone       = summaryTasks.filter(t => t.status === 'done' || t.status === 'closed').length;
-  const sOverdue    = summaryTasks.filter(t =>
-    t.status !== 'done' && t.status !== 'closed' && parseISO(t.endDate) < today
-  ).length;
-  const sTotal      = summaryTasks.length;
+  const sInProgress = tasks.filter(t => t.status === 'in_progress').length;
+  const sTodo       = tasks.filter(t => t.status === 'todo').length;
+  const sConsulting = tasks.filter(t => t.status === 'consulting').length;
+  const sDone       = tasks.filter(t => isFinished(t.status)).length;
+  const sOverdue    = tasks.filter(t => !isFinished(t.status) && parseISO(t.endDate) < today).length;
+  const sTotal      = tasks.length;
   const doneRatio   = sTotal > 0 ? sDone / sTotal : 0;
 
   /* header button base style */
@@ -364,7 +359,8 @@ export default function Home() {
           {/* Stats chips */}
           {[
             { label: '進行中', count: sInProgress, color: '#4F46E5', bg: 'rgba(79,70,229,0.08)', bd: 'rgba(79,70,229,0.2)' },
-            { label: '未着手', count: sTodo,       color: 'var(--t3)', bg: 'var(--surface-2)',   bd: 'var(--bd)' },
+            { label: '未開始', count: sTodo,       color: 'var(--t3)', bg: 'var(--surface-2)',   bd: 'var(--bd)' },
+            { label: '相談段階', count: sConsulting, color: '#0D9488', bg: 'rgba(13,148,136,0.08)', bd: 'rgba(13,148,136,0.22)' },
             { label: '期限超過', count: sOverdue,  color: '#EF4444',  bg: 'rgba(239,68,68,0.07)', bd: 'rgba(239,68,68,0.2)' },
             { label: '完了',   count: sDone,       color: '#16A34A',  bg: 'rgba(22,163,74,0.08)', bd: 'rgba(22,163,74,0.2)' },
           ].map(({ label, count, color, bg, bd }) => (

@@ -5,6 +5,7 @@ import { parseISO, differenceInDays, format, isWeekend, isToday, addMonths, addD
 import { Task, ViewState, GroupBy, Checkpoint } from '@/types/task';
 import { getDaysInView, DAY_WIDTHS } from '@/lib/dateUtils';
 import { getTaskColor } from '@/lib/taskColors';
+import { isFinished, compareByStatus, peopleOf } from '@/lib/status';
 
 const LEFT_PANEL_WIDTH = 380;
 const ROW_HEIGHT        = 42;
@@ -28,22 +29,29 @@ type DisplayRow =
   | { type: 'task'; task: Task };
 
 function buildDisplayRows(tasks: Task[], vs: ViewState): DisplayRow[] {
-  const filtered = tasks.filter(t => {
-    if (vs.filterStatus === 'all') return true;
-    if (vs.filterStatus === 'not_closed') return t.status !== 'closed';
-    return t.status === vs.filterStatus;
-  });
-  if (vs.groupBy === 'none') return filtered.map(t => ({ type: 'task', task: t }));
-  const getKey = (t: Task) => {
-    if (vs.groupBy === 'assignee') return t.assignee || '未割り当て';
-    if (vs.groupBy === 'category') return t.category  || 'カテゴリなし';
-    if (vs.groupBy === 'parent')   return t.parentId  || 'トップレベル';
-    return '';
-  };
+  // 完了（終了）は既定で非表示。トグルONで表示。
+  const visible = tasks.filter(t => vs.showDone || !isFinished(t.status));
+
+  // グループなし: 状態順（進行中→未開始→相談段階）に並べる
+  if (vs.groupBy === 'none') {
+    return visible.slice().sort(compareByStatus).map(t => ({ type: 'task', task: t }));
+  }
+
   const groups = new Map<string, Task[]>();
-  filtered.forEach(t => { const k = getKey(t); if (!groups.has(k)) groups.set(k, []); groups.get(k)!.push(t); });
+  const push = (k: string, t: Task) => { if (!groups.has(k)) groups.set(k, []); groups.get(k)!.push(t); };
+
+  visible.forEach(t => {
+    if (vs.groupBy === 'assignee') push(t.assignee || '未割り当て', t);
+    else if (vs.groupBy === 'category') push(t.category || 'カテゴリなし', t);
+    else if (vs.groupBy === 'parent') push(t.parentId ? (tasks.find(p => p.id === t.parentId)?.title || t.parentId) : 'トップレベル', t);
+    else if (vs.groupBy === 'member') peopleOf(t).forEach(m => push(m, t)); // メンバーごとにラインを複製
+  });
+
   const rows: DisplayRow[] = [];
-  groups.forEach((ts, label) => { rows.push({ type: 'group', label, key: label }); ts.forEach(t => rows.push({ type: 'task', task: t })); });
+  Array.from(groups.keys()).sort((a, b) => a.localeCompare(b, 'ja')).forEach(label => {
+    rows.push({ type: 'group', label, key: label });
+    groups.get(label)!.slice().sort(compareByStatus).forEach(t => rows.push({ type: 'task', task: t }));
+  });
   return rows;
 }
 
@@ -195,7 +203,7 @@ export default function GanttChart({ tasks, viewState, onTaskClick, onDateClick,
                 <div style={{ height: HEADER_MONTH_H + HEADER_DAY_H, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
                   <div style={{ display: 'flex', alignItems: 'center', height: HEADER_DAY_H, padding: '0 14px', gap: 8 }}>
                     <span style={{ fontSize: 9.5, color: 'var(--t3)', fontWeight: 700, flex: 1, textTransform: 'uppercase', letterSpacing: '0.08em' }}>件名</span>
-                    <span style={{ fontSize: 9.5, color: 'var(--t3)', fontWeight: 700, width: 80, textAlign: 'right', textTransform: 'uppercase', letterSpacing: '0.08em' }}>担当者</span>
+                    <span style={{ fontSize: 9.5, color: 'var(--t3)', fontWeight: 700, width: 84, textAlign: 'right', textTransform: 'uppercase', letterSpacing: '0.08em' }}>D</span>
                     <button onClick={() => setPanelVisible(false)} style={{ fontSize: 12, color: 'var(--t3)', background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}>‹</button>
                   </div>
                 </div>
@@ -241,16 +249,22 @@ export default function GanttChart({ tasks, viewState, onTaskClick, onDateClick,
                   </div>
                 );
                 return panelVisible ? (
-                  <div key={row.task.id} onClick={() => { if (!didDrag.current) onTaskClick(row.task); }} className="row-hover group"
+                  <div key={i} onClick={() => { if (!didDrag.current) onTaskClick(row.task); }} className="row-hover group"
                     style={{ height: ROW_HEIGHT, borderBottom: '1px solid var(--bd-light)', display: 'flex', alignItems: 'center', padding: '0 14px', gap: 8, cursor: 'pointer', transition: 'background .1s' }}>
                     <span style={{ fontSize: 12.5, color: 'var(--accent)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }} className="group-hover:underline">
                       {row.task.milestoneFlag && <span style={{ marginRight: 4, color: '#D97706', fontSize: 10 }}>◆</span>}
                       {row.task.title}
                     </span>
-                    <span style={{ fontSize: 11, color: 'var(--t3)', width: 80, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.task.assignee}</span>
+                    <span style={{ fontSize: 11, color: 'var(--t3)', width: 84, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      title={[row.task.assignee && `D: ${row.task.assignee}`, row.task.members?.length ? `メンバー: ${row.task.members.join(', ')}` : ''].filter(Boolean).join('\n')}>
+                      {row.task.assignee || '—'}
+                      {row.task.members && row.task.members.length > 0 && (
+                        <span style={{ marginLeft: 4, color: 'var(--accent)', fontWeight: 600 }}>+{row.task.members.length}</span>
+                      )}
+                    </span>
                   </div>
                 ) : (
-                  <div key={row.task.id} style={{ height: ROW_HEIGHT, borderBottom: '1px solid var(--bd-light)' }} />
+                  <div key={i} style={{ height: ROW_HEIGHT, borderBottom: '1px solid var(--bd-light)' }} />
                 );
               })}
             </div>
@@ -293,7 +307,7 @@ export default function GanttChart({ tasks, viewState, onTaskClick, onDateClick,
                   const te  = differenceInDays(parseISO(task.endDate),   viewStart);
                   if (off < 0 || off >= totalDays || off < ts || off > te) return null;
                   const c = cp.color ?? '#f59e0b';
-                  return <div key={`${task.id}-${cp.id}-bg`} style={{ position: 'absolute', left: off * dayWidth, top: rowYs[i], width: dayWidth, height: ROW_HEIGHT, background: `${c}18`, borderLeft: `2px solid ${c}66`, pointerEvents: 'none', zIndex: 9 }} />;
+                  return <div key={`${i}-${cp.id}-bg`} style={{ position: 'absolute', left: off * dayWidth, top: rowYs[i], width: dayWidth, height: ROW_HEIGHT, background: `${c}18`, borderLeft: `2px solid ${c}66`, pointerEvents: 'none', zIndex: 9 }} />;
                 });
               })}
 
@@ -328,7 +342,7 @@ export default function GanttChart({ tasks, viewState, onTaskClick, onDateClick,
                 if (task.milestoneFlag) {
                   const cx = barStart * dayWidth + dayWidth / 2;
                   return (
-                    <div key={task.id}
+                    <div key={i}
                       onMouseDown={e => handleBarMouseDown(e, task, 'move')}
                       onClick={() => { if (!didDrag.current) onTaskClick(task); }}
                       title={task.title}
@@ -337,7 +351,7 @@ export default function GanttChart({ tasks, viewState, onTaskClick, onDateClick,
                 }
 
                 return (
-                  <div key={task.id}
+                  <div key={i}
                     onMouseDown={e => handleBarMouseDown(e, task, 'move')}
                     onClick={() => { if (!didDrag.current) onTaskClick(task); }}
                     title={`${task.title}　${elapsedDays}日/${totalDaysTask}日`}
@@ -408,7 +422,7 @@ export default function GanttChart({ tasks, viewState, onTaskClick, onDateClick,
                   if (off < 0 || off >= totalDays || off < ts || off > te) return null;
                   const c = cp.color ?? '#f59e0b';
                   return (
-                    <div key={`${task.id}-${cp.id}`}>
+                    <div key={`${i}-${cp.id}`}>
                       <div style={{ position: 'absolute', left: off * dayWidth, top: barTop, width: dayWidth, height: 26, background: `${c}44`, borderLeft: `3px solid ${c}`, pointerEvents: 'none', zIndex: 12 }} />
                       {cp.label && (
                         <div style={{ position: 'absolute', left: off * dayWidth + dayWidth / 2, top: barTop + 28, transform: 'translateX(-50%)', fontSize: 9, fontWeight: 700, color: c, whiteSpace: 'nowrap', zIndex: 15, pointerEvents: 'none', background: 'rgba(255,255,255,0.95)', padding: '1px 5px', borderRadius: 4, border: `1px solid ${c}55`, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { GanttSettings, saveGanttSettings } from '@/lib/ganttSettings';
+import { GanttSettings, MemberInOut, saveGanttSettings } from '@/lib/ganttSettings';
 import { GCalCalendar } from '@/lib/gcal';
 
 type Props = {
@@ -16,10 +16,12 @@ const LBL = 'block text-[10.5px] font-bold text-[var(--t3)] mb-2 uppercase track
 export default function SettingsModal({ settings, gcalConnected, calendars = [], onClose }: Props) {
   const [assignees,       setAssignees]       = useState<string[]>(settings.assignees);
   const [memberDepts,     setMemberDepts]     = useState<Record<string, string>>(settings.memberDepts ?? {});
+  const [memberInOut,     setMemberInOut]     = useState<Record<string, MemberInOut>>(settings.memberInOut ?? {});
   const [gcalCalendarId,  setGcalCalendarId]  = useState(settings.gcalCalendarId ?? 'primary');
   const [newName,         setNewName]         = useState('');
   const [newDept,         setNewDept]         = useState('');
   const [saving,          setSaving]          = useState(false);
+  const [inOutOpenFor,    setInOutOpenFor]    = useState<string | null>(null);
 
   // 既存のDept候補（datalist用）
   const deptOptions = Array.from(new Set(Object.values(memberDepts).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ja'));
@@ -35,6 +37,7 @@ export default function SettingsModal({ settings, gcalConnected, calendars = [],
   const handleRemove = (name: string) => {
     setAssignees(p => p.filter(a => a !== name));
     setMemberDepts(p => { const next = { ...p }; delete next[name]; return next; });
+    setMemberInOut(p => { const next = { ...p }; delete next[name]; return next; });
   };
 
   const setDept = (name: string, dept: string) => {
@@ -45,9 +48,19 @@ export default function SettingsModal({ settings, gcalConnected, calendars = [],
     });
   };
 
+  const setInOut = (name: string, field: 'inDate' | 'outDate', value: string) => {
+    setMemberInOut(p => {
+      const cur  = { ...(p[name] ?? {}) };
+      if (value) cur[field] = value; else delete cur[field];
+      const next = { ...p };
+      if (cur.inDate || cur.outDate) next[name] = cur; else delete next[name];
+      return next;
+    });
+  };
+
   const handleSave = async () => {
     setSaving(true);
-    await saveGanttSettings({ ...settings, assignees, memberDepts, gcalCalendarId });
+    await saveGanttSettings({ ...settings, assignees, memberDepts, memberInOut, gcalCalendarId });
     setSaving(false);
     onClose();
   };
@@ -84,18 +97,44 @@ export default function SettingsModal({ settings, gcalConnected, calendars = [],
             <label className={LBL}>メンバー（D・担当者リスト）</label>
             <div style={{ maxHeight: 220, overflowY: 'auto', marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 5 }}>
               {assignees.length === 0 && <p style={{ fontSize: 12, color: 'var(--t3)', padding: '6px 0' }}>メンバーが登録されていません</p>}
-              {assignees.map(name => (
-                <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--surface-2)', border: '1px solid var(--bd)', borderRadius: 8, padding: '6px 8px 6px 12px' }}>
-                  <span style={{ fontSize: 13, color: 'var(--t1)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
-                  <input
-                    type="text" list="dept-options" value={memberDepts[name] ?? ''}
-                    onChange={e => setDept(name, e.target.value)} placeholder="Dept（所属）"
-                    style={{ ...field, width: 130, fontSize: 11.5, padding: '5px 9px', background: '#fff' }} onFocus={onFoc} onBlur={onBlr}
-                  />
-                  <button type="button" onClick={() => handleRemove(name)} style={{ color: 'var(--t3)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '0 2px', transition: 'color .15s' }}
-                    onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')} onMouseLeave={e => (e.currentTarget.style.color = 'var(--t3)')}>✕</button>
-                </div>
-              ))}
+              {assignees.map(name => {
+                const io = memberInOut[name];
+                const hasInOut = !!(io?.inDate || io?.outDate);
+                const open = inOutOpenFor === name;
+                return (
+                  <div key={name} style={{ background: 'var(--surface-2)', border: '1px solid var(--bd)', borderRadius: 8, padding: '6px 8px 6px 12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 13, color: 'var(--t1)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+                      <input
+                        type="text" list="dept-options" value={memberDepts[name] ?? ''}
+                        onChange={e => setDept(name, e.target.value)} placeholder="Dept（所属）"
+                        style={{ ...field, width: 110, fontSize: 11.5, padding: '5px 9px', background: '#fff' }} onFocus={onFoc} onBlur={onBlr}
+                      />
+                      <button type="button" onClick={() => setInOutOpenFor(open ? null : name)}
+                        title="IN/OUT日を設定"
+                        style={{ fontSize: 10, fontWeight: 700, color: hasInOut ? 'var(--accent)' : 'var(--t3)', background: hasInOut ? 'var(--accent-soft)' : 'transparent', border: `1px solid ${hasInOut ? 'rgba(196,98,26,0.3)' : 'var(--bd)'}`, borderRadius: 6, padding: '4px 7px', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all .15s' }}>
+                        IN/OUT
+                      </button>
+                      <button type="button" onClick={() => handleRemove(name)} style={{ color: 'var(--t3)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '0 2px', transition: 'color .15s' }}
+                        onMouseEnter={e => (e.currentTarget.style.color = '#EF4444')} onMouseLeave={e => (e.currentTarget.style.color = 'var(--t3)')}>✕</button>
+                    </div>
+                    {open && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 7, paddingTop: 7, borderTop: '1px solid var(--bd)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, flex: 1 }}>
+                          <span style={{ fontSize: 10, color: 'var(--t3)', fontWeight: 700 }}>IN</span>
+                          <input type="date" value={io?.inDate ?? ''} onChange={e => setInOut(name, 'inDate', e.target.value)}
+                            style={{ ...field, fontFamily: 'var(--font-mono)', fontSize: 11, padding: '5px 8px', background: '#fff' }} onFocus={onFoc} onBlur={onBlr} />
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, flex: 1 }}>
+                          <span style={{ fontSize: 10, color: 'var(--t3)', fontWeight: 700 }}>OUT</span>
+                          <input type="date" value={io?.outDate ?? ''} onChange={e => setInOut(name, 'outDate', e.target.value)}
+                            style={{ ...field, fontFamily: 'var(--font-mono)', fontSize: 11, padding: '5px 8px', background: '#fff' }} onFocus={onFoc} onBlur={onBlr} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
               <input type="text" value={newName} onChange={e => setNewName(e.target.value)} placeholder="名前" style={{ ...field, flex: 1, minWidth: 0 }} onFocus={onFoc} onBlur={onBlr}
@@ -104,7 +143,7 @@ export default function SettingsModal({ settings, gcalConnected, calendars = [],
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(); } }} />
               <button type="button" onClick={handleAdd} disabled={!newName.trim()} style={{ padding: '8px 14px', fontSize: 12, fontWeight: 600, background: newName.trim() ? 'var(--accent)' : 'var(--bd)', color: newName.trim() ? '#fff' : 'var(--t3)', border: 'none', borderRadius: 9, cursor: newName.trim() ? 'pointer' : 'not-allowed', transition: 'all .15s', boxShadow: newName.trim() ? '0 2px 8px rgba(196,98,26,0.3)' : 'none', whiteSpace: 'nowrap', flexShrink: 0 }}>追加</button>
             </div>
-            <p style={{ fontSize: 10.5, color: 'var(--t3)', marginTop: 6 }}>ここで登録したメンバーを、各プロジェクトのD・メンバー欄でプルダウン選択できます</p>
+            <p style={{ fontSize: 10.5, color: 'var(--t3)', marginTop: 6 }}>ここで登録したメンバーを、各プロジェクトのD・メンバー欄でプルダウン選択できます。「IN/OUT」で参加日・離脱日を設定すると、ガントチャートに控えめな目印が表示されます（任意）</p>
           </div>
 
           {gcalConnected && (

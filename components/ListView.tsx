@@ -104,7 +104,7 @@ export default function ListView({ tasks, viewState, memberDepts = {}, onTaskCli
   };
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', background: 'var(--canvas)' }}>
+    <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: 'var(--canvas)' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr>

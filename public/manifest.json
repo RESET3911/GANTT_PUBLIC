@@ -1,6 +1,6 @@
 {
-  "name": "Gantt Scheduler",
-  "short_name": "Gantt",
+  "name": "SiG GANTT Scheduler",
+  "short_name": "SiG GANTT",
   "description": "ガントチャートでタスク管理",
   "start_url": "/",
   "display": "standalone",

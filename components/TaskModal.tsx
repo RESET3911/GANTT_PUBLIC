@@ -15,6 +15,7 @@ type Props = {
   memberDepts?: Record<string, string>;
   initialDate?: string;
   gcalConnected?: boolean;
+  readOnly?: boolean;
   onSave: (data: SaveData | Task, syncToGCal: boolean) => void;
   onDelete?: () => void;
   onClose: () => void;
@@ -36,7 +37,7 @@ const STATUS_OPTIONS: { value: TaskStatus; label: string; bg: string; fg: string
 
 const LBL = 'block text-[10.5px] font-bold text-[var(--t3)] mb-1.5 uppercase tracking-[0.07em]';
 
-export default function TaskModal({ task, tasks, assignees = [], memberDepts = {}, initialDate, gcalConnected, onSave, onDelete, onClose }: Props) {
+export default function TaskModal({ task, tasks, assignees = [], memberDepts = {}, initialDate, gcalConnected, readOnly = false, onSave, onDelete, onClose }: Props) {
   const deptLabel = (name: string) => memberDepts[name] ? `${name}（${memberDepts[name]}）` : name;
   const isEdit     = task !== null;
   const defDate    = initialDate ?? format(new Date(), 'yyyy-MM-dd');
@@ -116,7 +117,7 @@ export default function TaskModal({ task, tasks, assignees = [], memberDepts = {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ width: 3, height: 20, borderRadius: 2, background: 'var(--accent)' }} />
             <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--t1)', fontFamily: 'Fraunces, Georgia, serif', fontStyle: 'italic', letterSpacing: '-0.3px' }}>
-              {isEdit ? 'タスクを編集' : initialDate ? `${initialDate.replace(/-/g, '/')} にタスクを追加` : 'タスクを追加'}
+              {readOnly ? 'タスク詳細（閲覧のみ）' : isEdit ? 'タスクを編集' : initialDate ? `${initialDate.replace(/-/g, '/')} にタスクを追加` : 'タスクを追加'}
             </h2>
           </div>
           <button onClick={onClose} style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: '1px solid var(--bd)', background: 'transparent', cursor: 'pointer', color: 'var(--t3)', fontSize: 14, transition: 'all .15s' }}>✕</button>
@@ -124,6 +125,7 @@ export default function TaskModal({ task, tasks, assignees = [], memberDepts = {
 
         {/* Body */}
         <form onSubmit={handleSubmit} style={{ overflowY: 'auto', flex: 1, padding: '18px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <fieldset disabled={readOnly} style={{ border: 'none', padding: 0, margin: 0, display: 'contents' }}>
 
           <div>
             <label className={LBL}>タスク名 <span style={{ color: '#EF4444' }}>*</span></label>
@@ -192,7 +194,7 @@ export default function TaskModal({ task, tasks, assignees = [], memberDepts = {
                 ))}
               </div>
             )}
-            {assignees.length > 0 ? (
+            {!readOnly && (assignees.length > 0 ? (
               <>
                 <select value="" onChange={e => { if (e.target.value) addMember(e.target.value); }} style={{ ...field, width: '100%', fontSize: 12 }} onFocus={onFocus} onBlur={onBlur}>
                   <option value="">＋ メンバーを追加...</option>
@@ -204,7 +206,7 @@ export default function TaskModal({ task, tasks, assignees = [], memberDepts = {
               </>
             ) : (
               <p style={{ fontSize: 11, color: 'var(--t3)' }}>設定でメンバーを登録すると、ここでプルダウン選択できます</p>
-            )}
+            ))}
           </div>
 
           <div>
@@ -216,8 +218,8 @@ export default function TaskModal({ task, tasks, assignees = [], memberDepts = {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-            <div onClick={() => setMilestone(v => !v)} style={{
-              width: 18, height: 18, borderRadius: 5, cursor: 'pointer', flexShrink: 0,
+            <div onClick={() => !readOnly && setMilestone(v => !v)} style={{
+              width: 18, height: 18, borderRadius: 5, cursor: readOnly ? 'default' : 'pointer', flexShrink: 0,
               border: milestone ? '1px solid #F59E0B' : '1px solid var(--bd)',
               background: milestone ? '#FFF7ED' : 'transparent',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -225,7 +227,7 @@ export default function TaskModal({ task, tasks, assignees = [], memberDepts = {
             }}>
               {milestone && <span style={{ fontSize: 9, color: '#F59E0B' }}>◆</span>}
             </div>
-            <span onClick={() => setMilestone(v => !v)} style={{ fontSize: 13, color: 'var(--t2)', cursor: 'pointer', fontWeight: 500 }}>マイルストーンとして設定</span>
+            <span onClick={() => !readOnly && setMilestone(v => !v)} style={{ fontSize: 13, color: 'var(--t2)', cursor: readOnly ? 'default' : 'pointer', fontWeight: 500 }}>マイルストーンとして設定</span>
           </div>
 
           <div>
@@ -248,15 +250,19 @@ export default function TaskModal({ task, tasks, assignees = [], memberDepts = {
                 ))}
               </div>
             )}
-            <div style={{ display: 'flex', gap: 6 }}>
-              <input type="date" value={newCpDate} onChange={e => setNewCpDate(e.target.value)} min={startDate} max={endDate} style={{ ...field, width: 'auto', fontFamily: 'var(--font-mono)', fontSize: 11, padding: '6px 10px' }} onFocus={onFocus} onBlur={onBlur} />
-              <input type="text" value={newCpLabel} onChange={e => setNewCpLabel(e.target.value)} placeholder="ラベル（例: 中間レビュー）" style={{ ...field, flex: 1, fontSize: 11, padding: '6px 10px' }} onFocus={onFocus} onBlur={onBlur}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCp(); } }} />
-              <button type="button" disabled={!newCpDate} onClick={addCp} style={{ padding: '6px 12px', fontSize: 11, fontWeight: 600, background: newCpDate ? '#FEF3C7' : '#F4F4F5', color: newCpDate ? '#D97706' : 'var(--t3)', border: newCpDate ? '1px solid #FDE68A' : '1px solid var(--bd)', borderRadius: 8, cursor: newCpDate ? 'pointer' : 'not-allowed', transition: 'all .15s', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                ＋追加
-              </button>
-            </div>
-            <p style={{ fontSize: 10.5, color: 'var(--t3)', marginTop: 5 }}>{startDate.replace(/-/g, '/')} 〜 {endDate.replace(/-/g, '/')} の範囲で選択</p>
+            {!readOnly && (
+              <>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input type="date" value={newCpDate} onChange={e => setNewCpDate(e.target.value)} min={startDate} max={endDate} style={{ ...field, width: 'auto', fontFamily: 'var(--font-mono)', fontSize: 11, padding: '6px 10px' }} onFocus={onFocus} onBlur={onBlur} />
+                  <input type="text" value={newCpLabel} onChange={e => setNewCpLabel(e.target.value)} placeholder="ラベル（例: 中間レビュー）" style={{ ...field, flex: 1, fontSize: 11, padding: '6px 10px' }} onFocus={onFocus} onBlur={onBlur}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCp(); } }} />
+                  <button type="button" disabled={!newCpDate} onClick={addCp} style={{ padding: '6px 12px', fontSize: 11, fontWeight: 600, background: newCpDate ? '#FEF3C7' : '#F4F4F5', color: newCpDate ? '#D97706' : 'var(--t3)', border: newCpDate ? '1px solid #FDE68A' : '1px solid var(--bd)', borderRadius: 8, cursor: newCpDate ? 'pointer' : 'not-allowed', transition: 'all .15s', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                    ＋追加
+                  </button>
+                </div>
+                <p style={{ fontSize: 10.5, color: 'var(--t3)', marginTop: 5 }}>{startDate.replace(/-/g, '/')} 〜 {endDate.replace(/-/g, '/')} の範囲で選択</p>
+              </>
+            )}
           </div>
 
           {gcalConnected && (
@@ -270,14 +276,15 @@ export default function TaskModal({ task, tasks, assignees = [], memberDepts = {
               </span>
             </div>
           )}
+        </fieldset>
         </form>
 
         {/* Footer */}
         <div style={{ padding: '13px 24px', borderTop: '1px solid var(--bd)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-          {isEdit && onDelete && !delConfirm && (
+          {!readOnly && isEdit && onDelete && !delConfirm && (
             <button type="button" onClick={() => setDelConfirm(true)} style={{ fontSize: 12, color: '#EF4444', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', padding: '5px 8px', borderRadius: 7 }}>削除</button>
           )}
-          {delConfirm && (
+          {!readOnly && delConfirm && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 12, color: '#EF4444', fontWeight: 600 }}>本当に削除しますか？</span>
               <button type="button" onClick={onDelete} style={{ fontSize: 12, background: '#FEF2F2', color: '#EF4444', border: '1px solid #FECACA', padding: '5px 12px', borderRadius: 7, cursor: 'pointer', fontWeight: 600 }}>削除する</button>
@@ -285,10 +292,16 @@ export default function TaskModal({ task, tasks, assignees = [], memberDepts = {
             </div>
           )}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-            <button type="button" onClick={onClose} style={{ padding: '8px 18px', fontSize: 13, fontWeight: 500, color: 'var(--t2)', background: 'var(--surface-2)', border: '1px solid var(--bd)', borderRadius: 9, cursor: 'pointer', transition: 'all .15s' }}>キャンセル</button>
-            <button type="button" onClick={handleSubmit as unknown as React.MouseEventHandler} disabled={!title.trim()} style={{ padding: '8px 22px', fontSize: 13, fontWeight: 700, background: title.trim() ? 'var(--accent)' : 'var(--bd)', color: 'white', border: 'none', borderRadius: 9, cursor: title.trim() ? 'pointer' : 'not-allowed', transition: 'all .15s', boxShadow: title.trim() ? '0 2px 8px rgba(196,98,26,0.35)' : 'none' }}>
-              {isEdit ? '保存する' : '追加する'}
-            </button>
+            {readOnly ? (
+              <button type="button" onClick={onClose} style={{ padding: '8px 18px', fontSize: 13, fontWeight: 500, color: 'var(--t2)', background: 'var(--surface-2)', border: '1px solid var(--bd)', borderRadius: 9, cursor: 'pointer', transition: 'all .15s' }}>閉じる</button>
+            ) : (
+              <>
+                <button type="button" onClick={onClose} style={{ padding: '8px 18px', fontSize: 13, fontWeight: 500, color: 'var(--t2)', background: 'var(--surface-2)', border: '1px solid var(--bd)', borderRadius: 9, cursor: 'pointer', transition: 'all .15s' }}>キャンセル</button>
+                <button type="button" onClick={handleSubmit as unknown as React.MouseEventHandler} disabled={!title.trim()} style={{ padding: '8px 22px', fontSize: 13, fontWeight: 700, background: title.trim() ? 'var(--accent)' : 'var(--bd)', color: 'white', border: 'none', borderRadius: 9, cursor: title.trim() ? 'pointer' : 'not-allowed', transition: 'all .15s', boxShadow: title.trim() ? '0 2px 8px rgba(196,98,26,0.35)' : 'none' }}>
+                  {isEdit ? '保存する' : '追加する'}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

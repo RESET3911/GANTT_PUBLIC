@@ -1,7 +1,12 @@
-# Gantt Scheduler (Public)
+# SiG GANTT Scheduler (Public)
 
 ガントチャートでタスク管理する独立アプリ。ST APPS から切り離した公開用コピー。
-URL を知っている人は全員、同じガントを閲覧・編集できます（Firebase Firestore 共有）。
+
+- `/`　　　… 編集可能URL（タスク追加・編集・削除・ドラッグ・設定変更が可能）
+- `/view` … 閲覧専用URL（すべての変更操作を非表示・無効化）
+
+どちらも同じ Firebase Firestore データを見ています。`/view` は UI 上の制限のみで、
+Firestore のセキュリティルール等でアクセスを制限しているわけではない点に注意してください。
 
 ## 技術スタック
 - Next.js 14 (App Router) / React 18 / TypeScript

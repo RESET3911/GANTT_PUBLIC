@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { parseISO, differenceInDays, format, isWeekend, isToday, addMonths, addDays } from 'date-fns';
+import { parseISO, differenceInDays, format, isWeekend, isToday, addDays } from 'date-fns';
 import { Task, ViewState, GroupBy, Checkpoint } from '@/types/task';
-import { getDaysInView, DAY_WIDTHS } from '@/lib/dateUtils';
+import { MemberInOut } from '@/lib/ganttSettings';
+import { getDaysInView, getTotalDays, DAY_WIDTHS } from '@/lib/dateUtils';
 import { getTaskColor } from '@/lib/taskColors';
 import { isFinished, compareByStatus, peopleOf } from '@/lib/status';
 
@@ -62,6 +63,8 @@ type Props = {
   tasks: Task[];
   viewState: ViewState;
   memberDepts?: Record<string, string>;
+  memberInOut?: Record<string, MemberInOut>;
+  readOnly?: boolean;
   onTaskClick: (task: Task) => void;
   onDateClick?: (date: string) => void;
   onTaskDragEnd?: (task: Task, newStart: string, newEnd: string) => void;
@@ -69,7 +72,7 @@ type Props = {
   onGoToToday?: () => void;
 };
 
-export default function GanttChart({ tasks, viewState, memberDepts = {}, onTaskClick, onDateClick, onTaskDragEnd, onViewStateChange, onGoToToday }: Props) {
+export default function GanttChart({ tasks, viewState, memberDepts = {}, memberInOut = {}, readOnly = false, onTaskClick, onDateClick, onTaskDragEnd, onViewStateChange, onGoToToday }: Props) {
   const [panelVisible,   setPanelVisible]   = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
   const [dragPreview,    setDragPreview]    = useState<{ taskId: string; start: string; end: string } | null>(null);
   const [isDragging,     setIsDragging]     = useState(false);
@@ -85,9 +88,13 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, onTaskC
 
   const dayWidth        = DAY_WIDTHS[viewState.viewRange];
   const viewStart       = parseISO(viewState.viewStartDate);
-  const viewEnd         = addMonths(viewStart, viewState.viewRange);
-  const totalDays       = differenceInDays(viewEnd, viewStart);
-  const days            = useMemo(() => getDaysInView(viewState.viewStartDate, viewState.viewRange), [viewState.viewStartDate, viewState.viewRange]);
+  // 既存スケジュールの最終終了日: 表示範囲(viewRange)を超えて先の予定があれば、
+  // 右にスライドして見られるよう表示幅をそこまで拡張する（それより先へは伸ばさない）
+  const latestTaskEnd = useMemo(() => tasks.reduce<string | undefined>(
+    (mx, t) => (!mx || t.endDate > mx) ? t.endDate : mx, undefined
+  ), [tasks]);
+  const totalDays       = useMemo(() => getTotalDays(viewState.viewStartDate, viewState.viewRange, latestTaskEnd), [viewState.viewStartDate, viewState.viewRange, latestTaskEnd]);
+  const days            = useMemo(() => getDaysInView(viewState.viewStartDate, viewState.viewRange, latestTaskEnd), [viewState.viewStartDate, viewState.viewRange, latestTaskEnd]);
   const totalGanttWidth = totalDays * dayWidth;
   const leftW           = panelVisible ? LEFT_PANEL_WIDTH : 40;
 
@@ -97,6 +104,20 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, onTaskC
     displayRows.forEach(row => { ys.push(y); y += row.type === 'group' ? GROUP_ROW_H : ROW_HEIGHT; });
     return { rowYs: ys, totalHeight: y };
   }, [displayRows]);
+
+  // D/メンバーでグルーピングしている時、各グループ（＝1人分）の行範囲。IN/OUT目印の描画に使う
+  const groupSpans = useMemo(() => {
+    const spans: { key: string; top: number; bottom: number }[] = [];
+    displayRows.forEach((row, i) => {
+      if (row.type !== 'group') return;
+      let bottom = totalHeight;
+      for (let j = i + 1; j < displayRows.length; j++) {
+        if (displayRows[j].type === 'group') { bottom = rowYs[j]; break; }
+      }
+      spans.push({ key: row.key, top: rowYs[i] + GROUP_ROW_H, bottom });
+    });
+    return spans;
+  }, [displayRows, rowYs, totalHeight]);
 
   const monthGroups = useMemo(() => {
     const gs: { label: string; dayCount: number }[] = [];
@@ -150,11 +171,11 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, onTaskC
   }, [dayWidth, onTaskDragEnd]);
 
   const handleBarMouseDown = useCallback((e: React.MouseEvent, task: Task, type: DragInfo['type']) => {
-    if (e.button !== 0) return;
+    if (readOnly || e.button !== 0) return;
     e.preventDefault(); e.stopPropagation();
     didDrag.current = false;
     dragInfo.current = { taskId: task.id, type, startClientX: e.clientX, origStart: task.startDate, origEnd: task.endDate, curStart: task.startDate, curEnd: task.endDate };
-  }, []);
+  }, [readOnly]);
 
   /* ── Ctrl+ホイール ズーム ── */
   useEffect(() => {
@@ -195,10 +216,10 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, onTaskC
   };
 
   return (
-    <div className="flex-1 overflow-hidden flex flex-col" style={{ position: 'relative', cursor: isDragging ? 'grabbing' : undefined, userSelect: isDragging ? 'none' : undefined }}>
+    <div className="flex-1 overflow-hidden flex flex-col min-h-0" style={{ position: 'relative', cursor: isDragging ? 'grabbing' : undefined, userSelect: isDragging ? 'none' : undefined }}>
 
       {/* ── Scroll container ── */}
-      <div ref={scrollRef} className="flex-1 overflow-auto">
+      <div ref={scrollRef} className="flex-1 overflow-auto min-h-0">
         <div style={{ minWidth: leftW + totalGanttWidth, position: 'relative' }}>
 
           {/* Sticky header */}
@@ -303,6 +324,24 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, onTaskC
                 <div style={{ position: 'absolute', top: 0, height: '100%', left: todayOffset * dayWidth + dayWidth / 2 - 1, width: 2, background: 'linear-gradient(to bottom, var(--today), rgba(224,90,27,0.12))', boxShadow: '0 0 6px rgba(224,90,27,0.3)', pointerEvents: 'none', zIndex: 5 }} />
               )}
 
+              {/* メンバー IN/OUT 目印（D・メンバーでグルーピング時、控えめな点線） */}
+              {groupSpans.map(span => {
+                const io = memberInOut[span.key];
+                if (!io) return null;
+                const marks: { key: string; date: string; label: string }[] = [];
+                if (io.inDate)  marks.push({ key: 'in',  date: io.inDate,  label: 'IN' });
+                if (io.outDate) marks.push({ key: 'out', date: io.outDate, label: 'OUT' });
+                return marks.map(m => {
+                  const off = differenceInDays(parseISO(m.date), viewStart);
+                  if (off < 0 || off >= totalDays) return null;
+                  return (
+                    <div key={`${span.key}-${m.key}`} style={{ position: 'absolute', left: off * dayWidth, top: span.top, height: span.bottom - span.top, borderLeft: '1px dashed rgba(107,98,73,0.32)', pointerEvents: 'none', zIndex: 3 }}>
+                      <span style={{ position: 'absolute', top: 2, left: 3, fontSize: 8, fontWeight: 700, color: 'var(--t3)', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{m.label}</span>
+                    </div>
+                  );
+                });
+              })}
+
               {/* Checkpoint cell tints */}
               {displayRows.map((row, i) => {
                 if (row.type === 'group' || !row.task.checkpoints?.length) return null;
@@ -352,7 +391,7 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, onTaskC
                       onMouseDown={e => handleBarMouseDown(e, task, 'move')}
                       onClick={() => { if (!didDrag.current) onTaskClick(task); }}
                       title={task.title}
-                      style={{ position: 'absolute', zIndex: 10, left: cx - 10, top: y + ROW_HEIGHT / 2 - 10, width: 20, height: 20, transform: 'rotate(45deg)', background: 'linear-gradient(135deg,#F59E0B,#D97706)', borderRadius: 4, cursor: 'grab', boxShadow: '0 2px 8px rgba(217,119,6,0.4)', opacity: isDraggedTask ? 0.7 : 1 }} />
+                      style={{ position: 'absolute', zIndex: 10, left: cx - 10, top: y + ROW_HEIGHT / 2 - 10, width: 20, height: 20, transform: 'rotate(45deg)', background: 'linear-gradient(135deg,#F59E0B,#D97706)', borderRadius: 4, cursor: readOnly ? 'pointer' : 'grab', boxShadow: '0 2px 8px rgba(217,119,6,0.4)', opacity: isDraggedTask ? 0.7 : 1 }} />
                   );
                 }
 
@@ -367,7 +406,7 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, onTaskC
                       width: barWidth, height: barH,
                       background: color,
                       borderRadius: 8,
-                      cursor: isDragging ? 'grabbing' : 'grab',
+                      cursor: readOnly ? 'pointer' : (isDragging ? 'grabbing' : 'grab'),
                       boxShadow: isDraggedTask
                         ? `0 4px 14px ${color}60, 0 2px 4px rgba(0,0,0,0.15)`
                         : `0 1px 4px ${color}50, 0 1px 1px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.2)`,
@@ -377,11 +416,13 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, onTaskC
                     }}
                   >
                     {/* 左リサイズハンドル */}
-                    <div
-                      onMouseDown={e => handleBarMouseDown(e, task, 'resize-left')}
-                      onClick={e => e.stopPropagation()}
-                      style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 8, cursor: 'ew-resize', zIndex: 2 }}
-                    />
+                    {!readOnly && (
+                      <div
+                        onMouseDown={e => handleBarMouseDown(e, task, 'resize-left')}
+                        onClick={e => e.stopPropagation()}
+                        style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 8, cursor: 'ew-resize', zIndex: 2 }}
+                      />
+                    )}
 
                     {/* 完了率オーバーレイ */}
                     {progress > 0 && (
@@ -407,11 +448,13 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, onTaskC
                     </div>
 
                     {/* 右リサイズハンドル */}
-                    <div
-                      onMouseDown={e => handleBarMouseDown(e, task, 'resize-right')}
-                      onClick={e => e.stopPropagation()}
-                      style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 8, cursor: 'ew-resize', zIndex: 2 }}
-                    />
+                    {!readOnly && (
+                      <div
+                        onMouseDown={e => handleBarMouseDown(e, task, 'resize-right')}
+                        onClick={e => e.stopPropagation()}
+                        style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 8, cursor: 'ew-resize', zIndex: 2 }}
+                      />
+                    )}
                   </div>
                 );
               })}

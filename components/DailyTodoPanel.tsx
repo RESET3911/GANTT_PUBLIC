@@ -5,11 +5,11 @@ import { format, addDays, startOfWeek } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 import { DailyTodo, addDailyTodo, toggleDailyTodo, deleteDailyTodo } from '@/lib/dailyTodo';
 
-interface Props { todos: DailyTodo[]; }
+interface Props { todos: DailyTodo[]; readOnly?: boolean; }
 
 const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
 
-export default function DailyTodoPanel({ todos }: Props) {
+export default function DailyTodoPanel({ todos, readOnly = false }: Props) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [inputMap,   setInputMap]   = useState<Record<string, string>>({});
 
@@ -85,27 +85,33 @@ export default function DailyTodoPanel({ todos }: Props) {
                 <div style={{ flex: 1, overflowY: 'auto', padding: '5px 9px', display: 'flex', flexDirection: 'column', gap: 3 }}>
                   {open.map(todo => (
                     <div key={todo.id} className="group" style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-                      <div onClick={() => toggleDailyTodo(todo.id, true)} style={{ marginTop: 3, flexShrink: 0, width: 13, height: 13, borderRadius: 3, border: '1.5px solid var(--bd)', background: 'var(--surface)', cursor: 'pointer', transition: 'all .15s' }} />
+                      <div onClick={() => !readOnly && toggleDailyTodo(todo.id, true)} style={{ marginTop: 3, flexShrink: 0, width: 13, height: 13, borderRadius: 3, border: '1.5px solid var(--bd)', background: 'var(--surface)', cursor: readOnly ? 'default' : 'pointer', transition: 'all .15s' }} />
                       <span style={{ flex: 1, fontSize: 11.5, lineHeight: 1.5, color: 'var(--t1)', wordBreak: 'break-word' }}>{todo.text}</span>
-                      <button onClick={() => deleteDailyTodo(todo.id)} className="opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--t3)', fontSize: 11, background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0, padding: 0, lineHeight: 1 }}>✕</button>
+                      {!readOnly && (
+                        <button onClick={() => deleteDailyTodo(todo.id)} className="opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--t3)', fontSize: 11, background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0, padding: 0, lineHeight: 1 }}>✕</button>
+                      )}
                     </div>
                   ))}
                   {done.map(todo => (
                     <div key={todo.id} className="group" style={{ display: 'flex', alignItems: 'flex-start', gap: 6, opacity: 0.5 }}>
-                      <div onClick={() => toggleDailyTodo(todo.id, false)} style={{ marginTop: 3, flexShrink: 0, width: 13, height: 13, borderRadius: 3, border: '1.5px solid #86EFAC', background: '#F0FDF4', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s' }}>
+                      <div onClick={() => !readOnly && toggleDailyTodo(todo.id, false)} style={{ marginTop: 3, flexShrink: 0, width: 13, height: 13, borderRadius: 3, border: '1.5px solid #86EFAC', background: '#F0FDF4', cursor: readOnly ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s' }}>
                         <svg width="7" height="6" viewBox="0 0 8 7" fill="none"><path d="M1 3.5l2 2 4-4" stroke="#16A34A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                       </div>
                       <span style={{ flex: 1, fontSize: 11.5, lineHeight: 1.5, textDecoration: 'line-through', color: 'var(--t3)', wordBreak: 'break-word' }}>{todo.text}</span>
-                      <button onClick={() => deleteDailyTodo(todo.id)} className="opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--t3)', fontSize: 11, background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0, padding: 0, lineHeight: 1 }}>✕</button>
+                      {!readOnly && (
+                        <button onClick={() => deleteDailyTodo(todo.id)} className="opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--t3)', fontSize: 11, background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0, padding: 0, lineHeight: 1 }}>✕</button>
+                      )}
                     </div>
                   ))}
                 </div>
 
                 {/* Input */}
-                <div style={{ padding: '4px 9px', borderTop: '1px solid var(--bd-light)', flexShrink: 0 }}>
-                  <input type="text" value={inputMap[ds] ?? ''} onChange={e => setInputMap(p => ({ ...p, [ds]: e.target.value }))} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(ds); } }} placeholder="+ 追加"
-                    style={{ width: '100%', fontSize: 11, color: 'var(--t2)', background: 'transparent', border: 'none', outline: 'none', fontFamily: 'inherit' }} />
-                </div>
+                {!readOnly && (
+                  <div style={{ padding: '4px 9px', borderTop: '1px solid var(--bd-light)', flexShrink: 0 }}>
+                    <input type="text" value={inputMap[ds] ?? ''} onChange={e => setInputMap(p => ({ ...p, [ds]: e.target.value }))} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(ds); } }} placeholder="+ 追加"
+                      style={{ width: '100%', fontSize: 11, color: 'var(--t2)', background: 'transparent', border: 'none', outline: 'none', fontFamily: 'inherit' }} />
+                  </div>
+                )}
               </div>
             );
           })}

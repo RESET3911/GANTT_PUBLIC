@@ -3,13 +3,13 @@ import Script from 'next/script';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Gantt Scheduler',
+  title: 'SiG GANTT Scheduler',
   description: 'ガントチャートでタスク管理',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'Gantt',
+    title: 'SiG GANTT',
   },
 };
 

@@ -3,9 +3,15 @@ import { db } from './firebase';
 
 const SETTINGS_DOC = doc(db, 'gantt_public_config', 'settings');
 
+export interface MemberInOut {
+  inDate?: string;   // 参加日（YYYY-MM-DD、任意）
+  outDate?: string;  // 離脱日（YYYY-MM-DD、任意）
+}
+
 export interface GanttSettings {
   assignees: string[];                    // メンバー名簿（D・メンバー選択用）
   memberDepts?: Record<string, string>;   // メンバー名 → Dept（所属）
+  memberInOut?: Record<string, MemberInOut>; // メンバー名 → IN/OUT日（任意）
   gcalCalendarId?: string;
 }
 

@@ -3,7 +3,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { parseISO, differenceInDays, format, isWeekend, isToday, addDays } from 'date-fns';
 import { Task, ViewState, GroupBy, Checkpoint } from '@/types/task';
-import { MemberInOut } from '@/lib/ganttSettings';
+import { MemberInOut, inOutConflicts } from '@/lib/ganttSettings';
 import { getDaysInView, getTotalDays, DAY_WIDTHS } from '@/lib/dateUtils';
 import { getTaskColor } from '@/lib/taskColors';
 import { isFinished, compareByStatus, peopleOf } from '@/lib/status';
@@ -118,6 +118,41 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, memberI
     });
     return spans;
   }, [displayRows, rowYs, totalHeight]);
+
+  // 各タスクの現在の描画位置（左端/右端/縦中心）。依存線の描画に使う
+  const taskPositions = useMemo(() => {
+    const map = new Map<string, { left: number; right: number; cy: number }>();
+    displayRows.forEach((row, i) => {
+      if (row.type === 'group') return;
+      const { task } = row;
+      const barStart = differenceInDays(parseISO(task.startDate), viewStart);
+      const barDays  = differenceInDays(parseISO(task.endDate), parseISO(task.startDate)) + 1;
+      const clampStart = Math.max(barStart, 0);
+      const clampEnd    = Math.min(barStart + barDays, totalDays);
+      if (clampEnd <= 0 || clampStart >= totalDays) return;
+      const left  = clampStart * dayWidth;
+      const width = Math.max((clampEnd - clampStart) * dayWidth, dayWidth / 2);
+      map.set(task.id, { left, right: left + width, cy: rowYs[i] + ROW_HEIGHT / 2 });
+    });
+    return map;
+  }, [displayRows, rowYs, viewStart, totalDays, dayWidth]);
+
+  // 親子タスクの依存線（行が一意に決まる「グループなし」表示の時のみ）
+  const dependencyLines = useMemo(() => {
+    if (viewState.groupBy !== 'none') return [];
+    const lines: { id: string; d: string }[] = [];
+    displayRows.forEach(row => {
+      if (row.type === 'group' || !row.task.parentId) return;
+      const parentPos = taskPositions.get(row.task.parentId);
+      const childPos  = taskPositions.get(row.task.id);
+      if (!parentPos || !childPos) return;
+      const x1 = parentPos.right, y1 = parentPos.cy;
+      const x2 = childPos.left,   y2 = childPos.cy;
+      const bend = Math.max(Math.abs(x2 - x1) / 2, 24);
+      lines.push({ id: `${row.task.parentId}-${row.task.id}`, d: `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}` });
+    });
+    return lines;
+  }, [displayRows, taskPositions, viewState.groupBy]);
 
   const monthGroups = useMemo(() => {
     const gs: { label: string; dayCount: number }[] = [];
@@ -342,6 +377,20 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, memberI
                 });
               })}
 
+              {/* 親子タスクの依存線 */}
+              {dependencyLines.length > 0 && (
+                <svg width={totalGanttWidth} height={totalHeight} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', zIndex: 6, overflow: 'visible' }}>
+                  <defs>
+                    <marker id="dep-arrow" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                      <path d="M0 0 L8 4 L0 8 Z" fill="var(--t3)" />
+                    </marker>
+                  </defs>
+                  {dependencyLines.map(line => (
+                    <path key={line.id} d={line.d} fill="none" stroke="var(--t3)" strokeWidth={1.3} strokeDasharray="3 3" opacity={0.55} markerEnd="url(#dep-arrow)" />
+                  ))}
+                </svg>
+              )}
+
               {/* Checkpoint cell tints */}
               {displayRows.map((row, i) => {
                 if (row.type === 'group' || !row.task.checkpoints?.length) return null;
@@ -383,6 +432,8 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, memberI
                 const progress      = isDone ? 1 : Math.min(elapsed / totalDaysTask, 1);
                 const elapsedDays   = isDone ? totalDaysTask : Math.max(0, Math.min(elapsed, totalDaysTask));
                 const showDaysText  = barWidth > 85 && totalDaysTask > 1;
+                const conflicts     = inOutConflicts(task, memberInOut);
+                const conflictTitle = conflicts.length > 0 ? `\n⚠ ${conflicts.map(c => c.reason).join(' / ')}` : '';
 
                 if (task.milestoneFlag) {
                   const cx = barStart * dayWidth + dayWidth / 2;
@@ -390,8 +441,12 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, memberI
                     <div key={i}
                       onMouseDown={e => handleBarMouseDown(e, task, 'move')}
                       onClick={() => { if (!didDrag.current) onTaskClick(task); }}
-                      title={task.title}
-                      style={{ position: 'absolute', zIndex: 10, left: cx - 10, top: y + ROW_HEIGHT / 2 - 10, width: 20, height: 20, transform: 'rotate(45deg)', background: 'linear-gradient(135deg,#F59E0B,#D97706)', borderRadius: 4, cursor: readOnly ? 'pointer' : 'grab', boxShadow: '0 2px 8px rgba(217,119,6,0.4)', opacity: isDraggedTask ? 0.7 : 1 }} />
+                      title={`${task.title}${conflictTitle}`}
+                      style={{ position: 'absolute', zIndex: 10, left: cx - 10, top: y + ROW_HEIGHT / 2 - 10, width: 20, height: 20, transform: 'rotate(45deg)', background: 'linear-gradient(135deg,#F59E0B,#D97706)', borderRadius: 4, cursor: readOnly ? 'pointer' : 'grab', boxShadow: '0 2px 8px rgba(217,119,6,0.4)', opacity: isDraggedTask ? 0.7 : 1 }}>
+                      {conflicts.length > 0 && (
+                        <div style={{ position: 'absolute', left: '50%', top: -12, transform: 'translateX(-50%) rotate(-45deg)', width: 11, height: 11, borderRadius: '50%', background: '#DC2626', border: '1.5px solid #fff', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+                      )}
+                    </div>
                   );
                 }
 
@@ -399,7 +454,7 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, memberI
                   <div key={i}
                     onMouseDown={e => handleBarMouseDown(e, task, 'move')}
                     onClick={() => { if (!didDrag.current) onTaskClick(task); }}
-                    title={`${task.title}　${elapsedDays}日/${totalDaysTask}日`}
+                    title={`${task.title}　${elapsedDays}日/${totalDaysTask}日${conflictTitle}`}
                     style={{
                       position: 'absolute', zIndex: 10,
                       left: barLeft, top: y + (ROW_HEIGHT - barH) / 2,
@@ -454,6 +509,13 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, memberI
                         onClick={e => e.stopPropagation()}
                         style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 8, cursor: 'ew-resize', zIndex: 2 }}
                       />
+                    )}
+
+                    {/* IN/OUT範囲外 警告バッジ */}
+                    {conflicts.length > 0 && (
+                      <div style={{ position: 'absolute', top: -5, right: -5, width: 14, height: 14, borderRadius: '50%', background: '#DC2626', border: '1.5px solid #fff', boxShadow: '0 1px 3px rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3, pointerEvents: 'none' }}>
+                        <span style={{ color: '#fff', fontSize: 9, fontWeight: 800, lineHeight: 1 }}>!</span>
+                      </div>
                     )}
                   </div>
                 );

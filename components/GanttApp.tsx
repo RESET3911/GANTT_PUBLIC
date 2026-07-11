@@ -14,10 +14,11 @@ import DailyTodoPanel from '@/components/DailyTodoPanel';
 import ControlBar from '@/components/ControlBar';
 import GanttChart from '@/components/GanttChart';
 import ListView from '@/components/ListView';
+import WorkloadView from '@/components/WorkloadView';
 import TaskModal from '@/components/TaskModal';
 import SettingsModal from '@/components/SettingsModal';
 
-type AppMode = 'gantt' | 'list';
+type AppMode = 'gantt' | 'list' | 'workload';
 
 const DEFAULT_VIEW_STATE: ViewState = {
   viewStartDate: format(new Date(), 'yyyy-MM-dd'),
@@ -64,6 +65,28 @@ const IcoEye = () => (
     <circle cx="7" cy="7" r="1.8" stroke="currentColor" strokeWidth="1.4"/>
   </svg>
 );
+const IcoLink = () => (
+  <svg width="12" height="12" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+    <path d="M6 8L8 6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+    <path d="M7.2 4.3l.9-.9a2.2 2.2 0 0 1 3.1 3.1l-.9.9M6.8 9.7l-.9.9a2.2 2.2 0 0 1-3.1-3.1l.9-.9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+  </svg>
+);
+const IcoCheck = () => (
+  <svg width="12" height="12" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+    <path d="M2.5 7.2l3 3 6-6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+const IcoSun = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+    <circle cx="7" cy="7" r="2.6" stroke="currentColor" strokeWidth="1.4"/>
+    <path d="M7 0.8v1.6M7 11.6v1.6M13.2 7h-1.6M2.4 7H0.8M11.3 2.7l-1.1 1.1M3.8 10.2l-1.1 1.1M11.3 11.3l-1.1-1.1M3.8 3.8L2.7 2.7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+  </svg>
+);
+const IcoMoon = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+    <path d="M12.3 8.6A5.4 5.4 0 1 1 5.4 1.7a4.3 4.3 0 0 0 6.9 6.9z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
+  </svg>
+);
 
 type Props = { readOnly?: boolean };
 
@@ -81,7 +104,33 @@ export default function GanttApp({ readOnly = false }: Props) {
   const [syncing,       setSyncing]       = useState(false);
   const [dailyTodos,    setDailyTodos]    = useState<DailyTodo[]>([]);
   const [todoHeight,    setTodoHeight]    = useState(260);
+  const [linkCopied,    setLinkCopied]    = useState(false);
+  const [theme,         setTheme]         = useState<'light' | 'dark'>('light');
   const isDragging = useRef(false);
+
+  useEffect(() => {
+    const current = document.documentElement.getAttribute('data-theme');
+    if (current === 'dark' || current === 'light') setTheme(current);
+  }, []);
+
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('gantt-theme', next); } catch { /* ignore */ }
+  };
+
+  const handleCopyViewLink = async () => {
+    const url = `${window.location.origin}/view`;
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      window.prompt('このURLをコピーしてください', url);
+      return;
+    }
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 1800);
+  };
 
   useEffect(() => {
     const unsub     = subscribeTasks(items => { setTasks(items); setLoading(false); }, () => setLoading(false));
@@ -259,10 +308,10 @@ export default function GanttApp({ readOnly = false }: Props) {
         {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexShrink: 0 }}>
           <span style={{
-            fontFamily: 'Fraunces, Georgia, serif',
-            fontStyle: 'italic', fontWeight: 700,
+            fontFamily: 'DM Sans, system-ui, sans-serif',
+            fontWeight: 800,
             fontSize: 17, color: 'var(--t1)',
-            letterSpacing: '-0.5px', lineHeight: 1,
+            letterSpacing: '-0.4px', lineHeight: 1,
           }}>SiG GANTT Scheduler</span>
           <span style={{
             fontFamily: 'DM Mono, monospace',
@@ -280,7 +329,7 @@ export default function GanttApp({ readOnly = false }: Props) {
           display: 'flex', gap: 2, padding: 3, borderRadius: 9,
           background: 'var(--canvas)', border: '1px solid var(--bd)',
         }}>
-          {(['gantt', 'list'] as const).map(m => (
+          {(['gantt', 'list', 'workload'] as const).map(m => (
             <button key={m} onClick={() => setMode(m)} style={{
               padding: '3px 14px', fontSize: 12, fontWeight: 600,
               borderRadius: 7, border: 'none', cursor: 'pointer',
@@ -289,18 +338,28 @@ export default function GanttApp({ readOnly = false }: Props) {
               color:      mode === m ? 'var(--accent)' : 'var(--t3)',
               boxShadow:  mode === m ? '0 1px 4px rgba(0,0,0,0.10)' : 'none',
             }}>
-              {m === 'gantt' ? 'ガント' : 'リスト'}
+              {m === 'gantt' ? 'ガント' : m === 'list' ? 'リスト' : '稼働'}
             </button>
           ))}
         </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button onClick={toggleTheme} title={theme === 'dark' ? 'ライトモードに切替' : 'ダークモードに切替'}
+            style={{ ...hdrBtn(), padding: '5px 8px' }}>
+            {theme === 'dark' ? <IcoSun /> : <IcoMoon />}
+          </button>
+
           {readOnly ? (
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', fontSize: 11, fontWeight: 700, borderRadius: 20, border: '1px solid var(--bd)', background: 'var(--surface-2)', color: 'var(--t3)', letterSpacing: '0.04em' }}>
               <IcoEye />閲覧専用
             </span>
           ) : (
             <>
+              <button onClick={handleCopyViewLink} title="閲覧専用URLをクリップボードにコピー"
+                style={hdrBtn(linkCopied ? { borderColor: 'rgba(22,163,74,0.3)', background: 'rgba(22,163,74,0.06)', color: '#16A34A' } : undefined)}>
+                {linkCopied ? <><IcoCheck />コピーしました</> : <><IcoLink />閲覧用リンク</>}
+              </button>
+
               <button onClick={() => setShowSettings(true)} style={hdrBtn()}>
                 <IcoSettings />設定
               </button>
@@ -421,9 +480,11 @@ export default function GanttApp({ readOnly = false }: Props) {
               onTaskDragEnd={readOnly ? undefined : handleTaskDragEnd}
               onViewStateChange={setViewState}
               onGoToToday={() => setViewState(p => ({ ...p, viewStartDate: format(new Date(), 'yyyy-MM-dd') }))} />
-          ) : (
+          ) : mode === 'list' ? (
             <ListView tasks={tasks} viewState={viewState} memberDepts={ganttSettings.memberDepts}
               onTaskClick={task => setModal({ type: 'edit', task })} />
+          ) : (
+            <WorkloadView tasks={tasks} viewState={viewState} memberDepts={ganttSettings.memberDepts} memberInOut={ganttSettings.memberInOut} />
           )}
         </div>
 

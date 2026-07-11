@@ -66,7 +66,7 @@ export default function SettingsModal({ settings, gcalConnected, calendars = [],
   };
 
   const field: React.CSSProperties = {
-    background: '#FAFAF8', border: '1px solid var(--bd)', color: 'var(--t1)',
+    background: 'var(--surface-2)', border: '1px solid var(--bd)', color: 'var(--t1)',
     borderRadius: 9, padding: '8px 12px', fontSize: 13,
     fontFamily: 'DM Sans, system-ui, sans-serif', outline: 'none',
     transition: 'border-color .15s, box-shadow .15s', boxSizing: 'border-box',
@@ -82,7 +82,7 @@ export default function SettingsModal({ settings, gcalConnected, calendars = [],
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px 14px', borderBottom: '1px solid var(--bd)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
             <div style={{ width: 3, height: 18, borderRadius: 2, background: 'var(--accent)' }} />
-            <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--t1)', fontFamily: 'Fraunces, Georgia, serif', fontStyle: 'italic', letterSpacing: '-0.3px' }}>設定</h2>
+            <h2 style={{ fontSize: 15, fontWeight: 800, color: 'var(--t1)', fontFamily: 'DM Sans, system-ui, sans-serif', letterSpacing: '-0.2px' }}>設定</h2>
           </div>
           <button onClick={onClose} style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: '1px solid var(--bd)', background: 'transparent', cursor: 'pointer', color: 'var(--t3)', fontSize: 14, transition: 'all .15s' }}>✕</button>
         </div>
@@ -108,7 +108,7 @@ export default function SettingsModal({ settings, gcalConnected, calendars = [],
                       <input
                         type="text" list="dept-options" value={memberDepts[name] ?? ''}
                         onChange={e => setDept(name, e.target.value)} placeholder="Dept（所属）"
-                        style={{ ...field, width: 110, fontSize: 11.5, padding: '5px 9px', background: '#fff' }} onFocus={onFoc} onBlur={onBlr}
+                        style={{ ...field, width: 110, fontSize: 11.5, padding: '5px 9px', background: 'var(--surface)' }} onFocus={onFoc} onBlur={onBlr}
                       />
                       <button type="button" onClick={() => setInOutOpenFor(open ? null : name)}
                         title="IN/OUT日を設定"
@@ -123,12 +123,12 @@ export default function SettingsModal({ settings, gcalConnected, calendars = [],
                         <div style={{ display: 'flex', alignItems: 'center', gap: 5, flex: 1 }}>
                           <span style={{ fontSize: 10, color: 'var(--t3)', fontWeight: 700 }}>IN</span>
                           <input type="date" value={io?.inDate ?? ''} onChange={e => setInOut(name, 'inDate', e.target.value)}
-                            style={{ ...field, fontFamily: 'var(--font-mono)', fontSize: 11, padding: '5px 8px', background: '#fff' }} onFocus={onFoc} onBlur={onBlr} />
+                            style={{ ...field, fontFamily: 'var(--font-mono)', fontSize: 11, padding: '5px 8px', background: 'var(--surface)' }} onFocus={onFoc} onBlur={onBlr} />
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 5, flex: 1 }}>
                           <span style={{ fontSize: 10, color: 'var(--t3)', fontWeight: 700 }}>OUT</span>
                           <input type="date" value={io?.outDate ?? ''} onChange={e => setInOut(name, 'outDate', e.target.value)}
-                            style={{ ...field, fontFamily: 'var(--font-mono)', fontSize: 11, padding: '5px 8px', background: '#fff' }} onFocus={onFoc} onBlur={onBlr} />
+                            style={{ ...field, fontFamily: 'var(--font-mono)', fontSize: 11, padding: '5px 8px', background: 'var(--surface)' }} onFocus={onFoc} onBlur={onBlr} />
                         </div>
                       </div>
                     )}

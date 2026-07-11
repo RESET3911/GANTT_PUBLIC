@@ -20,6 +20,26 @@
     --t3:          #ADA396;
     --weekend:     #EDE7DC;
     --font-mono:   'DM Mono', 'JetBrains Mono', monospace;
+    color-scheme: light;
+  }
+
+  :root[data-theme="dark"] {
+    --canvas:      #1C1815;
+    --surface:     #2C2620;
+    --surface-2:   #242019;
+    --header:      #29241E;
+    --accent:      #E0883C;
+    --accent-dark: #C4621A;
+    --accent-soft: rgba(224,136,60,0.16);
+    --today:       #FF7A3D;
+    --today-tint:  rgba(255,122,61,0.12);
+    --bd:          #3A342C;
+    --bd-light:    #2F2A24;
+    --t1:          #F2EADC;
+    --t2:          #B8AC97;
+    --t3:          #7A705F;
+    --weekend:     #221E19;
+    color-scheme: dark;
   }
 
   body {
@@ -29,15 +49,16 @@
     overflow: hidden;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: background-color .15s, color .15s;
   }
 
   input[type="date"] {
-    color-scheme: light;
+    color-scheme: inherit;
     font-family: var(--font-mono);
   }
 
   input, select, textarea {
-    color-scheme: light;
+    color-scheme: inherit;
   }
 
   ::-webkit-scrollbar { width: 5px; height: 5px; }

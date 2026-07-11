@@ -94,7 +94,7 @@ export default function TaskModal({ task, tasks, assignees = [], memberDepts = {
   const parentTasks = tasks.filter(t => t.id !== task?.id);
 
   const field: React.CSSProperties = {
-    width: '100%', background: '#FAFAF8', border: '1px solid var(--bd)',
+    width: '100%', background: 'var(--surface-2)', border: '1px solid var(--bd)',
     color: 'var(--t1)', borderRadius: 9, padding: '8px 12px', fontSize: 13,
     fontFamily: 'DM Sans, system-ui, sans-serif', outline: 'none',
     transition: 'border-color .15s, box-shadow .15s', boxSizing: 'border-box',
@@ -116,7 +116,7 @@ export default function TaskModal({ task, tasks, assignees = [], memberDepts = {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 24px 14px', borderBottom: '1px solid var(--bd)', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ width: 3, height: 20, borderRadius: 2, background: 'var(--accent)' }} />
-            <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--t1)', fontFamily: 'Fraunces, Georgia, serif', fontStyle: 'italic', letterSpacing: '-0.3px' }}>
+            <h2 style={{ fontSize: 15, fontWeight: 800, color: 'var(--t1)', fontFamily: 'DM Sans, system-ui, sans-serif', letterSpacing: '-0.2px' }}>
               {readOnly ? 'タスク詳細（閲覧のみ）' : isEdit ? 'タスクを編集' : initialDate ? `${initialDate.replace(/-/g, '/')} にタスクを追加` : 'タスクを追加'}
             </h2>
           </div>
@@ -241,7 +241,7 @@ export default function TaskModal({ task, tasks, assignees = [], memberDepts = {
             {checkpoints.length > 0 && (
               <div style={{ marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {checkpoints.slice().sort((a, b) => a.date.localeCompare(b.date)).map(cp => (
-                  <div key={cp.id} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '5px 10px' }}>
+                  <div key={cp.id} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface-2)', border: '1px solid var(--bd)', borderRadius: 8, padding: '5px 10px' }}>
                     <span style={{ fontSize: 9, color: '#F59E0B' }}>◆</span>
                     <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--t1)', fontFamily: 'var(--font-mono)' }}>{cp.date.replace(/-/g, '/')}</span>
                     {cp.label && <span style={{ fontSize: 11, color: 'var(--t2)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cp.label}</span>}

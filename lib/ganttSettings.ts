@@ -19,6 +19,31 @@ export interface GanttSettings {
 export const deptOf = (settings: GanttSettings, name: string): string | undefined =>
   name ? settings.memberDepts?.[name] : undefined;
 
+export interface InOutConflict { name: string; reason: string; }
+
+// タスクの担当(D)・メンバーが、そのタスクの日程中に IN/OUT 範囲外になっていないかチェック
+export function inOutConflicts(
+  task: { assignee: string; members?: string[]; startDate: string; endDate: string },
+  memberInOut: Record<string, MemberInOut>
+): InOutConflict[] {
+  const people = new Set<string>();
+  if (task.assignee) people.add(task.assignee);
+  (task.members ?? []).forEach(m => { if (m) people.add(m); });
+
+  const conflicts: InOutConflict[] = [];
+  people.forEach(name => {
+    const io = memberInOut[name];
+    if (!io) return;
+    if (io.inDate && task.startDate < io.inDate) {
+      conflicts.push({ name, reason: `${name}: IN日（${io.inDate.replace(/-/g, '/')}）より前に開始` });
+    }
+    if (io.outDate && task.endDate > io.outDate) {
+      conflicts.push({ name, reason: `${name}: OUT日（${io.outDate.replace(/-/g, '/')}）より後まで継続` });
+    }
+  });
+  return conflicts;
+}
+
 export function subscribeGanttSettings(
   onData: (settings: GanttSettings) => void
 ): () => void {

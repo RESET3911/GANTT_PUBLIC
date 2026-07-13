@@ -19,7 +19,7 @@ function hashString(str: string): number {
   return Math.abs(hash);
 }
 
-function paletteColor(key: string): string {
+export function paletteColor(key: string): string {
   return COLOR_PALETTE[hashString(key) % COLOR_PALETTE.length];
 }
 

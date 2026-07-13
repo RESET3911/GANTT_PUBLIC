@@ -27,6 +27,30 @@ const DeptTag = ({ dept }: { dept?: string }) =>
     <span style={{ fontSize: 10, fontWeight: 600, color: '#0D9488', background: '#F0FDFA', border: '1px solid #99F6E4', borderRadius: 5, padding: '1px 6px', whiteSpace: 'nowrap' }}>{dept}</span>
   ) : null;
 
+// 担当者の入力UI: 名簿があればプルダウン、なければテキスト入力（名簿未登録でも編集できるように）
+function AssigneeField({ value, onChange, assignees, deptLabel, emptyLabel = '未設定', placeholder, style, onFocus, onBlur }: {
+  value: string;
+  onChange: (v: string) => void;
+  assignees: string[];
+  deptLabel: (n: string) => string;
+  emptyLabel?: string;
+  placeholder?: string;
+  style?: React.CSSProperties;
+  onFocus?: React.FocusEventHandler<HTMLInputElement | HTMLSelectElement>;
+  onBlur?: React.FocusEventHandler<HTMLInputElement | HTMLSelectElement>;
+}) {
+  if (assignees.length > 0) {
+    return (
+      <select value={value} onChange={e => onChange(e.target.value)} style={style} onFocus={onFocus} onBlur={onBlur}>
+        <option value="">{emptyLabel}</option>
+        {value && !assignees.includes(value) && <option value={value}>{deptLabel(value)}</option>}
+        {assignees.map(a => <option key={a} value={a}>{deptLabel(a)}</option>)}
+      </select>
+    );
+  }
+  return <input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder ?? emptyLabel} style={style} onFocus={onFocus} onBlur={onBlur} />;
+}
+
 // 進行中(上) → 未開始 → 相談段階 → 完了
 const STATUS_OPTIONS: { value: TaskStatus; label: string; bg: string; fg: string; border: string }[] =
   (['in_progress', 'todo', 'consulting', 'done'] as TaskStatus[]).map(v => ({
@@ -58,6 +82,7 @@ export default function TaskModal({ task, tasks, assignees = [], memberDepts = {
   const [checkpoints,  setCheckpoints]  = useState<Checkpoint[]>(task?.checkpoints ?? []);
   const [newCpDate,    setNewCpDate]    = useState('');
   const [newCpLabel,   setNewCpLabel]   = useState('');
+  const [newCpAssignee, setNewCpAssignee] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,9 +103,17 @@ export default function TaskModal({ task, tasks, assignees = [], memberDepts = {
 
   const addCp = () => {
     if (!newCpDate) return;
-    setCheckpoints(p => [...p, { id: uuidv4(), date: newCpDate, label: newCpLabel.trim() || undefined }]);
-    setNewCpDate(''); setNewCpLabel('');
+    const cp: Checkpoint = { id: uuidv4(), date: newCpDate };
+    const lbl = newCpLabel.trim();
+    if (lbl) cp.label = lbl;
+    const asg = newCpAssignee.trim();
+    if (asg) cp.assignee = asg;
+    setCheckpoints(p => [...p, cp]);
+    setNewCpDate(''); setNewCpLabel(''); setNewCpAssignee('');
   };
+
+  const setCpAssignee = (id: string, name: string) =>
+    setCheckpoints(p => p.map(c => c.id === id ? { ...c, assignee: name || undefined } : c));
 
   const addMember = (name: string) => {
     const n = name.trim();
@@ -164,15 +197,8 @@ export default function TaskModal({ task, tasks, assignees = [], memberDepts = {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
               <label className={LBL}>D（主担当）</label>
-              {assignees.length > 0 ? (
-                <select value={assignee} onChange={e => setAssignee(e.target.value)} style={{ ...field, fontSize: 12 }} onFocus={onFocus} onBlur={onBlur}>
-                  <option value="">未設定</option>
-                  {assignee && !assignees.includes(assignee) && <option value={assignee}>{deptLabel(assignee)}</option>}
-                  {assignees.map(a => <option key={a} value={a}>{deptLabel(a)}</option>)}
-                </select>
-              ) : (
-                <input type="text" value={assignee} onChange={e => setAssignee(e.target.value)} placeholder="設定でメンバー登録を推奨" style={{ ...field, fontSize: 12 }} onFocus={onFocus} onBlur={onBlur} />
-              )}
+              <AssigneeField value={assignee} onChange={setAssignee} assignees={assignees} deptLabel={deptLabel}
+                placeholder="設定でメンバー登録を推奨" style={{ ...field, fontSize: 12 }} onFocus={onFocus} onBlur={onBlur} />
             </div>
             <div>
               <label className={LBL}>カテゴリー</label>
@@ -244,23 +270,36 @@ export default function TaskModal({ task, tasks, assignees = [], memberDepts = {
                   <div key={cp.id} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface-2)', border: '1px solid var(--bd)', borderRadius: 8, padding: '5px 10px' }}>
                     <span style={{ fontSize: 9, color: '#F59E0B' }}>◆</span>
                     <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--t1)', fontFamily: 'var(--font-mono)' }}>{cp.date.replace(/-/g, '/')}</span>
-                    {cp.label && <span style={{ fontSize: 11, color: 'var(--t2)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cp.label}</span>}
-                    <button type="button" onClick={() => setCheckpoints(p => p.filter(c => c.id !== cp.id))} style={{ color: 'var(--t3)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, padding: 0, lineHeight: 1, marginLeft: 'auto' }}>✕</button>
+                    <span style={{ fontSize: 11, color: 'var(--t2)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cp.label ?? ''}</span>
+                    {!readOnly ? (
+                      <AssigneeField value={cp.assignee ?? ''} onChange={v => setCpAssignee(cp.id, v)} assignees={assignees} deptLabel={deptLabel}
+                        emptyLabel="担当なし" placeholder="担当"
+                        style={{ fontSize: 10.5, padding: '3px 6px', borderRadius: 6, border: '1px solid var(--bd)', background: 'var(--surface)', color: cp.assignee ? 'var(--t1)' : 'var(--t3)', maxWidth: 130, width: assignees.length > 0 ? undefined : 96, flexShrink: 0, cursor: assignees.length > 0 ? 'pointer' : undefined }} />
+                    ) : cp.assignee ? (
+                      <span style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--accent)', background: 'var(--accent-soft)', borderRadius: 10, padding: '2px 8px', whiteSpace: 'nowrap', flexShrink: 0 }}>👤{cp.assignee}</span>
+                    ) : null}
+                    {!readOnly && (
+                      <button type="button" onClick={() => setCheckpoints(p => p.filter(c => c.id !== cp.id))} style={{ color: 'var(--t3)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, padding: 0, lineHeight: 1, flexShrink: 0 }}>✕</button>
+                    )}
                   </div>
                 ))}
               </div>
             )}
             {!readOnly && (
               <>
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <input type="date" value={newCpDate} onChange={e => setNewCpDate(e.target.value)} min={startDate} max={endDate} style={{ ...field, width: 'auto', fontFamily: 'var(--font-mono)', fontSize: 11, padding: '6px 10px' }} onFocus={onFocus} onBlur={onBlur} />
-                  <input type="text" value={newCpLabel} onChange={e => setNewCpLabel(e.target.value)} placeholder="ラベル（例: 中間レビュー）" style={{ ...field, flex: 1, fontSize: 11, padding: '6px 10px' }} onFocus={onFocus} onBlur={onBlur}
+                  <input type="text" value={newCpLabel} onChange={e => setNewCpLabel(e.target.value)} placeholder="ラベル（例: 中間レビュー）" style={{ ...field, flex: 1, minWidth: 120, fontSize: 11, padding: '6px 10px' }} onFocus={onFocus} onBlur={onBlur}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCp(); } }} />
+                  <AssigneeField value={newCpAssignee} onChange={setNewCpAssignee} assignees={assignees} deptLabel={deptLabel}
+                    emptyLabel="担当..." placeholder="担当"
+                    style={{ ...field, width: assignees.length > 0 ? 118 : 90, flexShrink: 0, fontSize: 11, padding: assignees.length > 0 ? '6px 8px' : '6px 10px', color: newCpAssignee ? 'var(--t1)' : 'var(--t3)' }}
+                    onFocus={onFocus} onBlur={onBlur} />
                   <button type="button" disabled={!newCpDate} onClick={addCp} style={{ padding: '6px 12px', fontSize: 11, fontWeight: 600, background: newCpDate ? '#FEF3C7' : '#F4F4F5', color: newCpDate ? '#D97706' : 'var(--t3)', border: newCpDate ? '1px solid #FDE68A' : '1px solid var(--bd)', borderRadius: 8, cursor: newCpDate ? 'pointer' : 'not-allowed', transition: 'all .15s', whiteSpace: 'nowrap', flexShrink: 0 }}>
                     ＋追加
                   </button>
                 </div>
-                <p style={{ fontSize: 10.5, color: 'var(--t3)', marginTop: 5 }}>{startDate.replace(/-/g, '/')} 〜 {endDate.replace(/-/g, '/')} の範囲で選択</p>
+                <p style={{ fontSize: 10.5, color: 'var(--t3)', marginTop: 5 }}>{startDate.replace(/-/g, '/')} 〜 {endDate.replace(/-/g, '/')} の範囲で選択・担当アーティストをアサイン可能</p>
               </>
             )}
           </div>

@@ -27,7 +27,7 @@ function daysRemaining(endDate: string): { label: string; color: string } {
   return            { label: `残り${d}日`,  color: 'var(--t3)' };
 }
 
-function TaskRow({ task, memberDepts, onTaskClick }: { task: Task; memberDepts: Record<string, string>; onTaskClick: (t: Task) => void }) {
+function TaskRow({ task, parentTitle, memberDepts, onTaskClick }: { task: Task; parentTitle?: string; memberDepts: Record<string, string>; onTaskClick: (t: Task) => void }) {
   const rem      = daysRemaining(task.endDate);
   const today    = startOfDay(new Date());
   const overdue  = isBefore(parseISO(task.endDate), today) && !isFinished(task.status);
@@ -44,13 +44,14 @@ function TaskRow({ task, memberDepts, onTaskClick }: { task: Task; memberDepts: 
       </td>
 
       <td style={{ padding: '9px 14px', maxWidth: 280 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: parentTitle ? 12 : 0 }}>
           {task.milestoneFlag && <span style={{ color: '#D97706', fontSize: 10, flexShrink: 0 }}>◆</span>}
           <span className="group-hover:underline" style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {task.title}
           </span>
         </div>
-        {task.notes && <span style={{ fontSize: 10.5, color: 'var(--t3)', display: 'block', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.notes}</span>}
+        {parentTitle && <span style={{ fontSize: 10, color: 'var(--t3)', display: 'block', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>└ 親: {parentTitle}</span>}
+        {task.notes && <span style={{ fontSize: 10.5, color: 'var(--t3)', display: 'block', marginTop: 2, paddingLeft: parentTitle ? 12 : 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.notes}</span>}
       </td>
 
       <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--t2)', whiteSpace: 'nowrap', fontWeight: 500 }}>
@@ -92,6 +93,8 @@ export default function ListView({ tasks, viewState, memberDepts = {}, onTaskCli
   const todo       = useMemo(() => tasks.filter(t => t.status === 'todo').sort(byEnd), [tasks]);
   const consulting = useMemo(() => tasks.filter(t => t.status === 'consulting').sort(byEnd), [tasks]);
   const done       = useMemo(() => tasks.filter(t => isFinished(t.status)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)), [tasks]);
+  const titleById  = useMemo(() => new Map(tasks.map(t => [t.id, t.title])), [tasks]);
+  const parentOf   = (t: Task) => (t.parentId && t.parentId !== t.id ? titleById.get(t.parentId) : undefined);
 
   const totalVisible = inProgress.length + todo.length + consulting.length + (viewState.showDone ? done.length : 0);
 
@@ -122,10 +125,10 @@ export default function ListView({ tasks, viewState, memberDepts = {}, onTaskCli
           {totalVisible === 0 && (
             <tr><td colSpan={COL_COUNT} style={{ textAlign: 'center', padding: '64px 0', color: 'var(--t3)', fontSize: 13 }}>タスクがありません</td></tr>
           )}
-          {inProgress.length > 0 && (<><SectionHeader label="進行中" count={inProgress.length} accent={STATUS_COLOR.in_progress} />{inProgress.map(t => <TaskRow key={t.id} task={t} memberDepts={memberDepts} onTaskClick={onTaskClick} />)}</>)}
-          {todo.length > 0       && (<><SectionHeader label="未開始" count={todo.length}       accent={STATUS_COLOR.todo}        />{todo.map(t => <TaskRow key={t.id} task={t} memberDepts={memberDepts} onTaskClick={onTaskClick} />)}</>)}
-          {consulting.length > 0 && (<><SectionHeader label="相談段階" count={consulting.length} accent={STATUS_COLOR.consulting}  />{consulting.map(t => <TaskRow key={t.id} task={t} memberDepts={memberDepts} onTaskClick={onTaskClick} />)}</>)}
-          {viewState.showDone && done.length > 0 && (<><SectionHeader label="完了" count={done.length} accent="#16A34A" />{done.map(t => <TaskRow key={t.id} task={t} memberDepts={memberDepts} onTaskClick={onTaskClick} />)}</>)}
+          {inProgress.length > 0 && (<><SectionHeader label="進行中" count={inProgress.length} accent={STATUS_COLOR.in_progress} />{inProgress.map(t => <TaskRow key={t.id} task={t} parentTitle={parentOf(t)} memberDepts={memberDepts} onTaskClick={onTaskClick} />)}</>)}
+          {todo.length > 0       && (<><SectionHeader label="未開始" count={todo.length}       accent={STATUS_COLOR.todo}        />{todo.map(t => <TaskRow key={t.id} task={t} parentTitle={parentOf(t)} memberDepts={memberDepts} onTaskClick={onTaskClick} />)}</>)}
+          {consulting.length > 0 && (<><SectionHeader label="相談段階" count={consulting.length} accent={STATUS_COLOR.consulting}  />{consulting.map(t => <TaskRow key={t.id} task={t} parentTitle={parentOf(t)} memberDepts={memberDepts} onTaskClick={onTaskClick} />)}</>)}
+          {viewState.showDone && done.length > 0 && (<><SectionHeader label="完了" count={done.length} accent="#16A34A" />{done.map(t => <TaskRow key={t.id} task={t} parentTitle={parentOf(t)} memberDepts={memberDepts} onTaskClick={onTaskClick} />)}</>)}
         </tbody>
       </table>
     </div>

@@ -3,9 +3,10 @@ export type TaskStatus = 'consulting' | 'todo' | 'in_progress' | 'done' | 'close
 
 export interface Checkpoint {
   id: string;
-  date: string;    // YYYY-MM-DD（タスクの開始〜終了日の範囲内）
-  label?: string;  // 表示ラベル（例: 「中間レビュー」）
-  color?: string;  // カスタム色（デフォルト: アンバー）
+  date: string;      // YYYY-MM-DD（タスクの開始〜終了日の範囲内）
+  label?: string;    // 表示ラベル（例: 「中間レビュー」）
+  color?: string;    // カスタム色（デフォルト: アンバー）
+  assignee?: string; // 担当アーティスト
 }
 
 export interface Task {

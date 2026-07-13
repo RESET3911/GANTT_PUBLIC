@@ -5,11 +5,12 @@ import { parseISO, differenceInDays, format, isWeekend, isToday, addDays } from 
 import { Task, ViewState, GroupBy, Checkpoint } from '@/types/task';
 import { MemberInOut, inOutConflicts } from '@/lib/ganttSettings';
 import { getDaysInView, getTotalDays, DAY_WIDTHS } from '@/lib/dateUtils';
-import { getTaskColor } from '@/lib/taskColors';
-import { isFinished, compareByStatus, peopleOf } from '@/lib/status';
+import { getTaskColor, paletteColor } from '@/lib/taskColors';
+import { isFinished, compareByStatus, peopleOf, STATUS_ORDER } from '@/lib/status';
 
 const LEFT_PANEL_WIDTH = 380;
 const ROW_HEIGHT        = 42;
+const BAR_H            = 26;
 const HEADER_MONTH_H   = 24;
 const HEADER_DAY_H     = 28;
 const GROUP_ROW_H      = 30;
@@ -23,19 +24,81 @@ type DragInfo = {
   origEnd: string;
   curStart: string;
   curEnd: string;
+  childIds: string[] | null; // Shift+移動ドラッグ時のみ: 一緒に動かす子孫タスク
+};
+
+type DragPreview = {
+  taskId: string;
+  start: string;
+  end: string;
+  delta: number;
+  childIds: string[] | null;
 };
 
 type DisplayRow =
   | { type: 'group'; label: string; key: string }
-  | { type: 'task'; task: Task };
+  | { type: 'task'; task: Task; depth?: number; childCount?: number; parentTitle?: string };
 
-function buildDisplayRows(tasks: Task[], vs: ViewState, memberDepts: Record<string, string>): DisplayRow[] {
+// 名前の頭文字の色付き丸（バー右端・チェックポイント用）
+const Avatar = ({ name, size = 16, style }: { name: string; size?: number; style?: React.CSSProperties }) => (
+  <span title={name} style={{ width: size, height: size, borderRadius: '50%', background: paletteColor(name), color: '#fff', fontSize: size * 0.55, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1.5px solid rgba(255,255,255,0.85)', lineHeight: 1, ...style }}>
+    {name.charAt(0)}
+  </span>
+);
+
+function buildDisplayRows(tasks: Task[], vs: ViewState, memberDepts: Record<string, string>, collapsed: Set<string>): DisplayRow[] {
   // 完了（終了）は既定で非表示。トグルONで表示。
   const visible = tasks.filter(t => vs.showDone || !isFinished(t.status));
 
-  // グループなし: 状態順（進行中→未開始→相談段階）に並べる
+  // グループなし: 親→子のツリー順に並べる（トップレベルは状態順、子は親の直下に開始日順）
   if (vs.groupBy === 'none') {
-    return visible.slice().sort(compareByStatus).map(t => ({ type: 'task', task: t }));
+    const visibleIds = new Set(visible.map(t => t.id));
+    const byId = new Map(tasks.map(t => [t.id, t]));
+    // 「子N」バッジは非表示の子も含めた実の子数を出す
+    const allChildCount = new Map<string, number>();
+    tasks.forEach(t => {
+      if (t.parentId && t.parentId !== t.id) allChildCount.set(t.parentId, (allChildCount.get(t.parentId) ?? 0) + 1);
+    });
+    const childrenOf = new Map<string, Task[]>();
+    const roots: Task[] = [];
+    visible.forEach(t => {
+      if (t.parentId && t.parentId !== t.id && visibleIds.has(t.parentId)) {
+        if (!childrenOf.has(t.parentId)) childrenOf.set(t.parentId, []);
+        childrenOf.get(t.parentId)!.push(t);
+      } else roots.push(t);
+    });
+    // ルートの並び順はサブツリー内で最も進んだ状態で決める（完了親の下の進行中子が沈まないように）
+    const bestOrder = (t: Task, visited: Set<string>): number => {
+      if (visited.has(t.id)) return STATUS_ORDER[t.status];
+      visited.add(t.id);
+      let best = STATUS_ORDER[t.status];
+      (childrenOf.get(t.id) ?? []).forEach(k => { best = Math.min(best, bestOrder(k, visited)); });
+      return best;
+    };
+    const rows: DisplayRow[] = [];
+    const seen = new Set<string>();
+    // 折りたたみで非表示になった子孫も seen に入れ、保険ループでトップレベルに昇格しないようにする
+    const markSeen = (t: Task) => {
+      if (seen.has(t.id)) return;
+      seen.add(t.id);
+      (childrenOf.get(t.id) ?? []).forEach(markSeen);
+    };
+    const pushTree = (t: Task, depth: number) => {
+      if (seen.has(t.id)) return;
+      seen.add(t.id);
+      const kids = (childrenOf.get(t.id) ?? []).slice()
+        .sort((a, b) => a.startDate.localeCompare(b.startDate) || compareByStatus(a, b));
+      // 親が非表示のままトップレベルに出た子には親名の注記を付ける
+      const parentTitle = depth === 0 && t.parentId && t.parentId !== t.id ? byId.get(t.parentId)?.title : undefined;
+      rows.push({ type: 'task', task: t, depth, childCount: allChildCount.get(t.id) ?? 0, parentTitle });
+      if (collapsed.has(t.id)) { kids.forEach(markSeen); return; }
+      kids.forEach(k => pushTree(k, depth + 1));
+    };
+    roots.slice()
+      .sort((a, b) => (bestOrder(a, new Set()) - bestOrder(b, new Set())) || compareByStatus(a, b))
+      .forEach(t => pushTree(t, 0));
+    visible.forEach(t => { if (!seen.has(t.id)) pushTree(t, 0); }); // 循環参照の保険
+    return rows;
   }
 
   const groups = new Map<string, Task[]>();
@@ -74,9 +137,18 @@ type Props = {
 
 export default function GanttChart({ tasks, viewState, memberDepts = {}, memberInOut = {}, readOnly = false, onTaskClick, onDateClick, onTaskDragEnd, onViewStateChange, onGoToToday }: Props) {
   const [panelVisible,   setPanelVisible]   = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
-  const [dragPreview,    setDragPreview]    = useState<{ taskId: string; start: string; end: string } | null>(null);
+  const [dragPreview,    setDragPreview]    = useState<DragPreview | null>(null);
   const [isDragging,     setIsDragging]     = useState(false);
   const [showFloatToday, setShowFloatToday] = useState(false);
+  const [collapsed,      setCollapsed]      = useState<Set<string>>(new Set());
+
+  const toggleCollapse = useCallback((id: string) => {
+    setCollapsed(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
 
   const withDept = (n: string) => (memberDepts[n] ? `${n}（${memberDepts[n]}）` : n);
 
@@ -98,7 +170,21 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, memberI
   const totalGanttWidth = totalDays * dayWidth;
   const leftW           = panelVisible ? LEFT_PANEL_WIDTH : 40;
 
-  const displayRows = useMemo(() => buildDisplayRows(tasks, viewState, memberDepts), [tasks, viewState, memberDepts]);
+  const displayRows = useMemo(() => buildDisplayRows(tasks, viewState, memberDepts, collapsed), [tasks, viewState, memberDepts, collapsed]);
+  const taskById    = useMemo(() => new Map(tasks.map(t => [t.id, t])), [tasks]);
+
+  // ドラッグ中のプレビュー日付。Shift+移動なら子孫タスクも同じ日数スライドして見せる
+  const previewDates = useCallback((task: Task): { start: string; end: string } => {
+    if (!dragPreview) return { start: task.startDate, end: task.endDate };
+    if (dragPreview.taskId === task.id) return { start: dragPreview.start, end: dragPreview.end };
+    if (dragPreview.delta !== 0 && dragPreview.childIds?.includes(task.id)) {
+      return {
+        start: format(addDays(parseISO(task.startDate), dragPreview.delta), 'yyyy-MM-dd'),
+        end:   format(addDays(parseISO(task.endDate),   dragPreview.delta), 'yyyy-MM-dd'),
+      };
+    }
+    return { start: task.startDate, end: task.endDate };
+  }, [dragPreview]);
   const { rowYs, totalHeight } = useMemo(() => {
     const ys: number[] = []; let y = 0;
     displayRows.forEach(row => { ys.push(y); y += row.type === 'group' ? GROUP_ROW_H : ROW_HEIGHT; });
@@ -119,40 +205,55 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, memberI
     return spans;
   }, [displayRows, rowYs, totalHeight]);
 
-  // 各タスクの現在の描画位置（左端/右端/縦中心）。依存線の描画に使う
+  // 各タスクの現在の描画位置（左端/右端/縦中心/菱形中心）。依存線の描画に使う。
+  // ドラッグ中はプレビュー位置を反映するので、依存線もリアルタイムに追従する
   const taskPositions = useMemo(() => {
-    const map = new Map<string, { left: number; right: number; cy: number }>();
+    const map = new Map<string, { left: number; right: number; cy: number; cx: number }>();
     displayRows.forEach((row, i) => {
       if (row.type === 'group') return;
       const { task } = row;
-      const barStart = differenceInDays(parseISO(task.startDate), viewStart);
-      const barDays  = differenceInDays(parseISO(task.endDate), parseISO(task.startDate)) + 1;
+      const { start, end } = previewDates(task);
+      const barStart = differenceInDays(parseISO(start), viewStart);
+      const barDays  = differenceInDays(parseISO(end), parseISO(start)) + 1;
       const clampStart = Math.max(barStart, 0);
       const clampEnd    = Math.min(barStart + barDays, totalDays);
       if (clampEnd <= 0 || clampStart >= totalDays) return;
       const left  = clampStart * dayWidth;
       const width = Math.max((clampEnd - clampStart) * dayWidth, dayWidth / 2);
-      map.set(task.id, { left, right: left + width, cy: rowYs[i] + ROW_HEIGHT / 2 });
+      // マイルストーン菱形の中心X。開始日が表示範囲外でも見えるようにクランプする
+      const cx = Math.min(Math.max(barStart * dayWidth + dayWidth / 2, dayWidth / 2), totalDays * dayWidth - dayWidth / 2);
+      map.set(task.id, { left, right: left + width, cy: rowYs[i] + ROW_HEIGHT / 2, cx });
     });
     return map;
-  }, [displayRows, rowYs, viewStart, totalDays, dayWidth]);
+  }, [displayRows, rowYs, viewStart, totalDays, dayWidth, previewDates]);
 
   // 親子タスクの依存線（行が一意に決まる「グループなし」表示の時のみ）
+  // 親バーの開始位置から下ろし、子バーの左端に刺さるエルボー線。色は親バーに合わせる
   const dependencyLines = useMemo(() => {
     if (viewState.groupBy !== 'none') return [];
-    const lines: { id: string; d: string }[] = [];
+    const lines: { id: string; d: string; arrow: string; color: string; sx: number; sy: number }[] = [];
     displayRows.forEach(row => {
       if (row.type === 'group' || !row.task.parentId) return;
-      const parentPos = taskPositions.get(row.task.parentId);
-      const childPos  = taskPositions.get(row.task.id);
-      if (!parentPos || !childPos) return;
-      const x1 = parentPos.right, y1 = parentPos.cy;
-      const x2 = childPos.left,   y2 = childPos.cy;
-      const bend = Math.max(Math.abs(x2 - x1) / 2, 24);
-      lines.push({ id: `${row.task.parentId}-${row.task.id}`, d: `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}` });
+      const parentTask = taskById.get(row.task.parentId);
+      const parentPos  = taskPositions.get(row.task.parentId);
+      const childPos   = taskPositions.get(row.task.id);
+      if (!parentTask || !parentPos || !childPos) return;
+      const color = getTaskColor(parentTask, viewState.groupBy);
+      // 親がマイルストーン（◆）なら菱形の下端中央から、通常バーなら左下から下ろす
+      const sx = parentTask.milestoneFlag ? parentPos.cx : parentPos.left + 1;
+      const sy = parentPos.cy + (parentTask.milestoneFlag ? 14 : BAR_H / 2);
+      const ex = childPos.left - 2;    // 子バー左端の手前
+      const ey = childPos.cy;
+      const dir = ex >= sx ? 1 : -1;
+      lines.push({
+        id: `${row.task.parentId}-${row.task.id}`,
+        d: `M ${sx} ${sy} L ${sx} ${ey} L ${ex} ${ey}`,
+        arrow: `M ${ex} ${ey} l ${-6 * dir} -3.5 l 0 7 Z`,
+        color, sx, sy,
+      });
     });
     return lines;
-  }, [displayRows, taskPositions, viewState.groupBy]);
+  }, [displayRows, taskPositions, viewState.groupBy, taskById]);
 
   const monthGroups = useMemo(() => {
     const gs: { label: string; dayCount: number }[] = [];
@@ -189,13 +290,26 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, memberI
         if (ns > origEnd) ns = origEnd;
       }
       dragInfo.current.curStart = ns; dragInfo.current.curEnd = ne;
-      setDragPreview({ taskId: dragInfo.current.taskId, start: ns, end: ne });
+      setDragPreview({ taskId: dragInfo.current.taskId, start: ns, end: ne, delta: type === 'move' ? delta : 0, childIds: dragInfo.current.childIds });
     };
     const onUp = () => {
       if (!dragInfo.current) return;
       if (didDrag.current && onTaskDragEnd) {
-        const task = tasksRef.current.find(t => t.id === dragInfo.current!.taskId);
-        if (task) onTaskDragEnd(task, dragInfo.current.curStart, dragInfo.current.curEnd);
+        const info = dragInfo.current;
+        const task = tasksRef.current.find(t => t.id === info.taskId);
+        if (task) onTaskDragEnd(task, info.curStart, info.curEnd);
+        // Shift+移動ドラッグ: 子孫タスクも同じ日数スライドして保存
+        const delta = differenceInDays(parseISO(info.curStart), parseISO(info.origStart));
+        if (info.type === 'move' && info.childIds && delta !== 0) {
+          info.childIds.forEach(id => {
+            const child = tasksRef.current.find(t => t.id === id);
+            if (child) onTaskDragEnd(
+              child,
+              format(addDays(parseISO(child.startDate), delta), 'yyyy-MM-dd'),
+              format(addDays(parseISO(child.endDate),   delta), 'yyyy-MM-dd'),
+            );
+          });
+        }
       }
       dragInfo.current = null; didDrag.current = false;
       setIsDragging(false); setDragPreview(null);
@@ -209,7 +323,26 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, memberI
     if (readOnly || e.button !== 0) return;
     e.preventDefault(); e.stopPropagation();
     didDrag.current = false;
-    dragInfo.current = { taskId: task.id, type, startClientX: e.clientX, origStart: task.startDate, origEnd: task.endDate, curStart: task.startDate, curEnd: task.endDate };
+    // Shift+移動ドラッグなら子孫タスクを集めて一緒に動かす
+    let childIds: string[] | null = null;
+    if (type === 'move' && e.shiftKey) {
+      const byParent = new Map<string, string[]>();
+      tasksRef.current.forEach(t => {
+        if (t.parentId && t.parentId !== t.id) {
+          if (!byParent.has(t.parentId)) byParent.set(t.parentId, []);
+          byParent.get(t.parentId)!.push(t.id);
+        }
+      });
+      const out: string[] = [];
+      const stack = [task.id];
+      const seen  = new Set([task.id]);
+      while (stack.length) {
+        const id = stack.pop()!;
+        (byParent.get(id) ?? []).forEach(c => { if (!seen.has(c)) { seen.add(c); out.push(c); stack.push(c); } });
+      }
+      if (out.length > 0) childIds = out;
+    }
+    dragInfo.current = { taskId: task.id, type, startClientX: e.clientX, origStart: task.startDate, origEnd: task.endDate, curStart: task.startDate, curEnd: task.endDate, childIds };
   }, [readOnly]);
 
   /* ── Ctrl+ホイール ズーム ── */
@@ -310,13 +443,34 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, memberI
                     <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--t1)' }}>{row.label}</span>
                   </div>
                 );
+                const depth = row.depth ?? 0;
                 return panelVisible ? (
                   <div key={i} onClick={() => { if (!didDrag.current) onTaskClick(row.task); }} className="row-hover group"
                     style={{ height: ROW_HEIGHT, borderBottom: '1px solid var(--bd-light)', display: 'flex', alignItems: 'center', padding: '0 14px', gap: 8, cursor: 'pointer', transition: 'background .1s' }}>
-                    <span style={{ fontSize: 12.5, color: 'var(--accent)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }} className="group-hover:underline">
-                      {row.task.milestoneFlag && <span style={{ marginRight: 4, color: '#D97706', fontSize: 10 }}>◆</span>}
-                      {row.task.title}
-                    </span>
+                    {depth > 0 && (
+                      <div style={{ width: depth * 14, flexShrink: 0, alignSelf: 'stretch', display: 'flex', justifyContent: 'flex-end' }}>
+                        <div style={{ width: 9, height: '50%', borderLeft: '1.5px solid var(--bd)', borderBottom: '1.5px solid var(--bd)', borderBottomLeftRadius: 4 }} />
+                      </div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 1 }}>
+                      <span style={{ fontSize: depth > 0 ? 12 : 12.5, color: 'var(--accent)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }} className="group-hover:underline">
+                        {row.task.milestoneFlag && <span style={{ marginRight: 4, color: '#D97706', fontSize: 10 }}>◆</span>}
+                        {row.task.title}
+                      </span>
+                      {row.parentTitle && (
+                        <span title={`親課題: ${row.parentTitle}（非表示）`} style={{ fontSize: 9, color: 'var(--t3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          └ 親: {row.parentTitle}
+                        </span>
+                      )}
+                    </div>
+                    {(row.childCount ?? 0) > 0 && (
+                      <button type="button"
+                        onClick={e => { e.stopPropagation(); toggleCollapse(row.task.id); }}
+                        title={collapsed.has(row.task.id) ? `子課題 ${row.childCount}件を展開` : `子課題 ${row.childCount}件を折りたたむ`}
+                        style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent)', background: 'var(--accent-soft)', border: 'none', borderRadius: 8, padding: '1px 6px', flexShrink: 0, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                        {collapsed.has(row.task.id) ? '▸' : '▾'} 子{row.childCount}
+                      </button>
+                    )}
                     <span style={{ fontSize: 11, color: 'var(--t3)', width: 84, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                       title={[row.task.assignee && `D: ${withDept(row.task.assignee)}`, row.task.members?.length ? `メンバー: ${row.task.members.map(withDept).join(', ')}` : ''].filter(Boolean).join('\n')}>
                       {row.task.assignee || '—'}
@@ -331,8 +485,8 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, memberI
               })}
             </div>
 
-            {/* Chart area */}
-            <div style={{ position: 'relative', width: totalGanttWidth, height: Math.max(totalHeight, 200), flexShrink: 0 }}>
+            {/* Chart area（zIndex:1 でスタッキングコンテキスト化し、バー類が sticky 左パネルの上に描画されるのを防ぐ） */}
+            <div style={{ position: 'relative', zIndex: 1, width: totalGanttWidth, height: Math.max(totalHeight, 200), flexShrink: 0 }}>
 
               {/* Weekend shading */}
               {days.map((day, i) => isWeekend(day) && (
@@ -380,13 +534,12 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, memberI
               {/* 親子タスクの依存線 */}
               {dependencyLines.length > 0 && (
                 <svg width={totalGanttWidth} height={totalHeight} style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', zIndex: 6, overflow: 'visible' }}>
-                  <defs>
-                    <marker id="dep-arrow" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                      <path d="M0 0 L8 4 L0 8 Z" fill="var(--t3)" />
-                    </marker>
-                  </defs>
                   {dependencyLines.map(line => (
-                    <path key={line.id} d={line.d} fill="none" stroke="var(--t3)" strokeWidth={1.3} strokeDasharray="3 3" opacity={0.55} markerEnd="url(#dep-arrow)" />
+                    <g key={line.id}>
+                      <path d={line.d} fill="none" stroke={line.color} strokeWidth={1.8} strokeLinejoin="round" opacity={0.7} />
+                      <path d={line.arrow} fill={line.color} opacity={0.85} />
+                      <circle cx={line.sx} cy={line.sy} r={2.5} fill={line.color} opacity={0.85} />
+                    </g>
                   ))}
                 </svg>
               )}
@@ -409,9 +562,7 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, memberI
               {displayRows.map((row, i) => {
                 if (row.type === 'group') return null;
                 const { task } = row;
-                const preview = dragPreview?.taskId === task.id ? dragPreview : null;
-                const dispStart = preview?.start ?? task.startDate;
-                const dispEnd   = preview?.end   ?? task.endDate;
+                const { start: dispStart, end: dispEnd } = previewDates(task);
 
                 const barStart    = differenceInDays(parseISO(dispStart), viewStart);
                 const barDays     = differenceInDays(parseISO(dispEnd), parseISO(dispStart)) + 1;
@@ -422,8 +573,7 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, memberI
                 const barWidth = Math.max((clampEnd - clampStart) * dayWidth, dayWidth / 2);
                 const color    = getTaskColor(task, groupBy);
                 const y        = rowYs[i];
-                const barH     = 26;
-                const isDraggedTask = !!preview;
+                const isDraggedTask = !!dragPreview && (dragPreview.taskId === task.id || (dragPreview.childIds?.includes(task.id) ?? false));
 
                 // 完了率 (時間ベース)
                 const totalDaysTask = differenceInDays(parseISO(task.endDate), parseISO(task.startDate)) + 1;
@@ -434,14 +584,20 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, memberI
                 const showDaysText  = barWidth > 85 && totalDaysTask > 1;
                 const conflicts     = inOutConflicts(task, memberInOut);
                 const conflictTitle = conflicts.length > 0 ? `\n⚠ ${conflicts.map(c => c.reason).join(' / ')}` : '';
+                const dragHint      = !readOnly && (row.childCount ?? 0) > 0 ? '\nShift+ドラッグで子課題も一緒に移動' : '';
+                // バー右端に出す担当アバター（D + メンバー、幅に応じて数を絞る）
+                const avatarNames   = barWidth > 70
+                  ? Array.from(new Set([task.assignee, ...(task.members ?? [])].filter(Boolean) as string[])).slice(0, barWidth > 130 ? 3 : 1)
+                  : [];
 
                 if (task.milestoneFlag) {
-                  const cx = barStart * dayWidth + dayWidth / 2;
+                  // 開始日が表示範囲外にはみ出す場合は端にクランプ（左パネル裏に隠れないように）
+                  const cx = Math.min(Math.max(barStart * dayWidth + dayWidth / 2, dayWidth / 2), totalGanttWidth - dayWidth / 2);
                   return (
                     <div key={i}
                       onMouseDown={e => handleBarMouseDown(e, task, 'move')}
                       onClick={() => { if (!didDrag.current) onTaskClick(task); }}
-                      title={`${task.title}${conflictTitle}`}
+                      title={`${task.title}${conflictTitle}${dragHint}`}
                       style={{ position: 'absolute', zIndex: 10, left: cx - 10, top: y + ROW_HEIGHT / 2 - 10, width: 20, height: 20, transform: 'rotate(45deg)', background: 'linear-gradient(135deg,#F59E0B,#D97706)', borderRadius: 4, cursor: readOnly ? 'pointer' : 'grab', boxShadow: '0 2px 8px rgba(217,119,6,0.4)', opacity: isDraggedTask ? 0.7 : 1 }}>
                       {conflicts.length > 0 && (
                         <div style={{ position: 'absolute', left: '50%', top: -12, transform: 'translateX(-50%) rotate(-45deg)', width: 11, height: 11, borderRadius: '50%', background: '#DC2626', border: '1.5px solid #fff', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
@@ -454,11 +610,11 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, memberI
                   <div key={i}
                     onMouseDown={e => handleBarMouseDown(e, task, 'move')}
                     onClick={() => { if (!didDrag.current) onTaskClick(task); }}
-                    title={`${task.title}　${elapsedDays}日/${totalDaysTask}日${conflictTitle}`}
+                    title={`${task.title}　${elapsedDays}日/${totalDaysTask}日${conflictTitle}${dragHint}`}
                     style={{
                       position: 'absolute', zIndex: 10,
-                      left: barLeft, top: y + (ROW_HEIGHT - barH) / 2,
-                      width: barWidth, height: barH,
+                      left: barLeft, top: y + (ROW_HEIGHT - BAR_H) / 2,
+                      width: barWidth, height: BAR_H,
                       background: color,
                       borderRadius: 8,
                       cursor: readOnly ? 'pointer' : (isDragging ? 'grabbing' : 'grab'),
@@ -500,6 +656,11 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, memberI
                           {isDone ? `完了` : `${elapsedDays}/${totalDaysTask}日`}
                         </span>
                       )}
+                      {avatarNames.length > 0 && (
+                        <span style={{ display: 'inline-flex', flexShrink: 0 }}>
+                          {avatarNames.map((n, idx) => <Avatar key={n} name={n} size={16} style={{ marginLeft: idx > 0 ? -5 : 0 }} />)}
+                        </span>
+                      )}
                     </div>
 
                     {/* 右リサイズハンドル */}
@@ -525,7 +686,7 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, memberI
               {displayRows.map((row, i) => {
                 if (row.type === 'group' || !row.task.checkpoints?.length) return null;
                 const { task } = row;
-                const barTop = rowYs[i] + (ROW_HEIGHT - 26) / 2;
+                const barTop = rowYs[i] + (ROW_HEIGHT - BAR_H) / 2;
                 return (task.checkpoints as Checkpoint[]).map(cp => {
                   const off = differenceInDays(parseISO(cp.date), viewStart);
                   const ts  = differenceInDays(parseISO(task.startDate), viewStart);
@@ -534,10 +695,16 @@ export default function GanttChart({ tasks, viewState, memberDepts = {}, memberI
                   const c = cp.color ?? '#f59e0b';
                   return (
                     <div key={`${i}-${cp.id}`}>
-                      <div style={{ position: 'absolute', left: off * dayWidth, top: barTop, width: dayWidth, height: 26, background: `${c}44`, borderLeft: `3px solid ${c}`, pointerEvents: 'none', zIndex: 12 }} />
-                      {cp.label && (
-                        <div style={{ position: 'absolute', left: off * dayWidth + dayWidth / 2, top: barTop + 28, transform: 'translateX(-50%)', fontSize: 9, fontWeight: 700, color: c, whiteSpace: 'nowrap', zIndex: 15, pointerEvents: 'none', background: 'rgba(255,255,255,0.95)', padding: '1px 5px', borderRadius: 4, border: `1px solid ${c}55`, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                      <div style={{ position: 'absolute', left: off * dayWidth, top: barTop, width: dayWidth, height: BAR_H, background: `${c}44`, borderLeft: `3px solid ${c}`, pointerEvents: 'none', zIndex: 12 }} />
+                      {(cp.label || cp.assignee) && (
+                        <div style={{ position: 'absolute', left: off * dayWidth + dayWidth / 2, top: barTop + BAR_H + 2, transform: 'translateX(-50%)', display: 'flex', alignItems: 'center', gap: 3, fontSize: 9, fontWeight: 700, color: c, whiteSpace: 'nowrap', zIndex: 15, pointerEvents: 'none', background: 'var(--surface)', padding: '1px 5px', borderRadius: 4, border: `1px solid ${c}55`, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
                           {cp.label}
+                          {cp.assignee && (
+                            <>
+                              <Avatar name={cp.assignee} size={12} />
+                              <span style={{ opacity: 0.85, fontWeight: 600 }}>{cp.assignee}</span>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>

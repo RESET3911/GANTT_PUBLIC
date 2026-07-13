@@ -14,7 +14,7 @@ type Props = {
   memberInOut?: Record<string, MemberInOut>;
 };
 
-type Row = { name: string; count: number; days: number; conflict: boolean };
+type Row = { name: string; count: number; days: number; cpCount: number; conflict: boolean };
 
 export default function WorkloadView({ tasks, viewState, memberDepts = {}, memberInOut = {} }: Props) {
   const viewStart  = parseISO(viewState.viewStartDate);
@@ -31,12 +31,24 @@ export default function WorkloadView({ tasks, viewState, memberDepts = {}, membe
       const overlapEnd   = teExclusive < viewEndExclusive ? teExclusive : viewEndExclusive;
       const overlapDays  = Math.max(0, differenceInDays(overlapEnd, overlapStart));
       const conflicts = inOutConflicts(task, memberInOut);
-      peopleOf(task).forEach(name => {
-        const row = map.get(name) ?? { name, count: 0, days: 0, conflict: false };
+      const people    = peopleOf(task);
+      people.forEach(name => {
+        const row = map.get(name) ?? { name, count: 0, days: 0, cpCount: 0, conflict: false };
         row.count += 1;
         row.days  += overlapDays;
         if (conflicts.some(c => c.name === name)) row.conflict = true;
         map.set(name, row);
+      });
+      // チェックポイント担当も「その日の稼働」として集計（レビュー日の負荷を可視化）
+      (task.checkpoints ?? []).forEach(cp => {
+        if (!cp.assignee) return;
+        const d = parseISO(cp.date);
+        if (d < viewStart || d >= viewEndExclusive) return;
+        const row = map.get(cp.assignee) ?? { name: cp.assignee, count: 0, days: 0, cpCount: 0, conflict: false };
+        row.cpCount += 1;
+        // タスク自体のメンバーとして日数計上済みの人は二重計上しない
+        if (!people.includes(cp.assignee)) row.days += 1;
+        map.set(cp.assignee, row);
       });
     });
     return Array.from(map.values()).sort((a, b) => b.days - a.days || b.count - a.count);
@@ -50,7 +62,7 @@ export default function WorkloadView({ tasks, viewState, memberDepts = {}, membe
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 6 }}>
           <h3 style={{ fontSize: 13, fontWeight: 800, color: 'var(--t1)' }}>メンバー別 稼働状況</h3>
           <span style={{ fontSize: 10.5, color: 'var(--t3)' }}>
-            表示中の期間（{format_(viewState.viewStartDate)} 〜 {windowDays}日間）内の割り当て日数を基準に算出
+            表示中の期間（{format_(viewState.viewStartDate)} 〜 {windowDays}日間）内の割り当て日数（チェックポイント担当含む）を基準に算出
           </span>
         </div>
 
@@ -67,6 +79,9 @@ export default function WorkloadView({ tasks, viewState, memberDepts = {}, membe
                     <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--t1)' }}>{withDept(row.name)}</span>
                     {row.conflict && (
                       <span title="IN/OUT期間外にまたがるタスクを含みます" style={{ width: 14, height: 14, borderRadius: '50%', background: '#DC2626', color: '#fff', fontSize: 9, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>!</span>
+                    )}
+                    {row.cpCount > 0 && (
+                      <span title="この期間に担当するチェックポイント数" style={{ fontSize: 10, fontWeight: 700, color: '#D97706', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 10, padding: '1px 7px', whiteSpace: 'nowrap', flexShrink: 0 }}>◆ CP {row.cpCount}件</span>
                     )}
                     <span style={{ marginLeft: 'auto', fontSize: 10.5, color: 'var(--t3)' }}>未完了 {row.count}件</span>
                     <span style={{ fontSize: 11, fontWeight: 700, color: over ? '#DC2626' : 'var(--accent)', fontFamily: 'var(--font-mono)', minWidth: 34, textAlign: 'right' }}>{pct}%</span>

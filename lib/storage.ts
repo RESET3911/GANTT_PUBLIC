@@ -11,10 +11,19 @@ import { Task } from '@/types/task';
 
 const COLLECTION = 'gantt_public_tasks';
 
-function stripUndefined<T extends object>(obj: T): Partial<T> {
-  return Object.fromEntries(
-    Object.entries(obj).filter(([, v]) => v !== undefined)
-  ) as Partial<T>;
+// Firestore は undefined を含むデータを保存できないため、ネストも含めて再帰的に除去する
+function stripUndefined<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map(v => stripUndefined(v)) as unknown as T;
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as object)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => [k, stripUndefined(v)])
+    ) as T;
+  }
+  return value;
 }
 
 export function subscribeTasks(

@@ -147,4 +147,11 @@
     box-shadow: 0 0 0 3px rgba(196,98,26,0.12);
   }
   .modal-field::placeholder { color: var(--t3); }
+
+  /* ── SiGMa HUB button ── */
+  .sigma-hub-btn:hover {
+    background: var(--t1) !important;
+    color: var(--canvas) !important;
+    border-color: var(--t1) !important;
+  }
 }

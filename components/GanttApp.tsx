@@ -17,6 +17,7 @@ import ListView from '@/components/ListView';
 import WorkloadView from '@/components/WorkloadView';
 import TaskModal from '@/components/TaskModal';
 import SettingsModal from '@/components/SettingsModal';
+import HubButton from '@/components/HubButton';
 
 type AppMode = 'gantt' | 'list' | 'workload';
 
@@ -304,6 +305,9 @@ export default function GanttApp({ readOnly = false }: Props) {
         padding: '0 18px', gap: 14, flexShrink: 0,
         borderBottom: '1px solid var(--bd)',
       }}>
+
+        {/* SiGMa HUB へ戻る */}
+        <HubButton />
 
         {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexShrink: 0 }}>
